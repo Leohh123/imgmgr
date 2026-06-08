@@ -1,0 +1,1 @@
+A desktop image asset manager for organizing unpacked game textures. Built with Qt 6 Widgets, C++17 and SQLite. Supports rule-based classification, read-only scanning, and conflict detection.
