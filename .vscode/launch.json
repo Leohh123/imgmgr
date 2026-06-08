@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "运行 imgmgr（构建后启动）",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/imgmgr.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb.exe",
+            "preLaunchTask": "build imgmgr"
+        }
+    ]
+}

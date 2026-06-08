@@ -1,0 +1,25 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "Qt MinGW",
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+            "intelliSenseMode": "windows-gcc-x64",
+            "cppStandard": "c++17",
+            "cStandard": "c17",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/build/imgmgr_autogen/include"
+            ],
+            "defines": [
+                "UNICODE",
+                "_UNICODE",
+                "QT_CORE_LIB",
+                "QT_GUI_LIB",
+                "QT_WIDGETS_LIB",
+                "QT_SQL_LIB",
+                "QT_CONCURRENT_LIB"
+            ]
+        }
+    ]
+}
