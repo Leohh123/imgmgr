@@ -5,6 +5,28 @@
 #include <QSqlError>
 #include <QSqlQuery>
 
+namespace {
+RuleRecord ruleFromQuery(const QSqlQuery& q)
+{
+    RuleRecord r;
+    r.id = q.value("id").toInt();
+    r.parentId = q.value("parent_id").toInt();
+    r.name = q.value("name").toString();
+    r.ruleType = q.value("rule_type").toString();
+    r.pattern = q.value("pattern").toString();
+    r.matchTarget = q.value("match_target").toString();
+    r.enabled = q.value("enabled").toInt() != 0;
+    r.priority = q.value("priority").toInt();
+    r.allowConflict = q.value("allow_conflict").toInt() != 0;
+    r.caseSensitive = q.value("case_sensitive").toInt() != 0;
+    r.wholeMatch = q.value("whole_match").toInt() != 0;
+    r.note = q.value("note").toString();
+    r.matchCount = q.value("match_count").toInt();
+    r.conflictCount = q.value("conflict_count").toInt();
+    return r;
+}
+}
+
 RuleRepository::RuleRepository(QSqlDatabase db)
     : m_db(std::move(db))
 {
@@ -172,22 +194,7 @@ RuleRecord RuleRepository::fetchRule(int id) const
     if (!q.next())
         return {};
 
-    RuleRecord r;
-    r.id = q.value("id").toInt();
-    r.parentId = q.value("parent_id").toInt();
-    r.name = q.value("name").toString();
-    r.ruleType = q.value("rule_type").toString();
-    r.pattern = q.value("pattern").toString();
-    r.matchTarget = q.value("match_target").toString();
-    r.enabled = q.value("enabled").toInt() != 0;
-    r.priority = q.value("priority").toInt();
-    r.allowConflict = q.value("allow_conflict").toInt() != 0;
-    r.caseSensitive = q.value("case_sensitive").toInt() != 0;
-    r.wholeMatch = q.value("whole_match").toInt() != 0;
-    r.note = q.value("note").toString();
-    r.matchCount = q.value("match_count").toInt();
-    r.conflictCount = q.value("conflict_count").toInt();
-    return r;
+    return ruleFromQuery(q);
 }
 
 QVector<RuleRecord> RuleRepository::fetchRules(bool enabledOnly) const
@@ -201,22 +208,7 @@ QVector<RuleRecord> RuleRepository::fetchRules(bool enabledOnly) const
     QSqlQuery q(sql, m_db);
     QVector<RuleRecord> rules;
     while (q.next()) {
-        RuleRecord r;
-        r.id = q.value("id").toInt();
-        r.parentId = q.value("parent_id").toInt();
-        r.name = q.value("name").toString();
-        r.ruleType = q.value("rule_type").toString();
-        r.pattern = q.value("pattern").toString();
-        r.matchTarget = q.value("match_target").toString();
-        r.enabled = q.value("enabled").toInt() != 0;
-        r.priority = q.value("priority").toInt();
-        r.allowConflict = q.value("allow_conflict").toInt() != 0;
-        r.caseSensitive = q.value("case_sensitive").toInt() != 0;
-        r.wholeMatch = q.value("whole_match").toInt() != 0;
-        r.note = q.value("note").toString();
-        r.matchCount = q.value("match_count").toInt();
-        r.conflictCount = q.value("conflict_count").toInt();
-        rules << r;
+        rules << ruleFromQuery(q);
     }
     return rules;
 }

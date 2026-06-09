@@ -753,15 +753,15 @@ QString MainWindow::rulePath(int ruleId, const QHash<int, RuleRecord>& rulesById
     return parts.join(QStringLiteral(" / "));
 }
 
-QString MainWindow::conflictReason(int ruleA, int ruleB, const QHash<int, RuleRecord>& rulesById) const
+QString MainWindow::conflictReason(int ruleA, int ruleB, const QHash<int, RuleRecord>& rulesById, const QHash<int, int>& parentById) const
 {
     const RuleRecord a = rulesById.value(ruleA);
     const RuleRecord b = rulesById.value(ruleB);
     if (a.allowConflict || b.allowConflict)
         return QStringLiteral("无冲突：至少一个规则允许冲突。");
-    if (m_ruleEngine && m_ruleEngine->isAncestorRule(ruleA, ruleB))
+    if (RuleUtils::isAncestorRule(parentById, ruleA, ruleB))
         return QStringLiteral("无冲突：%1 是 %2 的祖先规则。").arg(rulePath(ruleA, rulesById), rulePath(ruleB, rulesById));
-    if (m_ruleEngine && m_ruleEngine->isAncestorRule(ruleB, ruleA))
+    if (RuleUtils::isAncestorRule(parentById, ruleB, ruleA))
         return QStringLiteral("无冲突：%1 是 %2 的祖先规则。").arg(rulePath(ruleB, rulesById), rulePath(ruleA, rulesById));
     return QStringLiteral("存在冲突：两个规则不在同一祖先链上，且未设置允许冲突。");
 }
@@ -828,35 +828,14 @@ bool MainWindow::projectWritesWouldTouchResourceDir(const QString& resourceDir) 
     const QString normalizedResource = QDir::cleanPath(resourcePath).toLower();
     const QString normalizedProject = QDir::cleanPath(projectPath).toLower();
     return normalizedProject == normalizedResource
-        || normalizedProject.startsWith(normalizedResource + QDir::separator());
+        || normalizedProject.startsWith(normalizedResource + QLatin1Char('/'));
 }
 
 void MainWindow::saveRule(const RuleRecord& input)
 {
     if (!m_database.db().isOpen())
         return;
-    RuleRecord rule = input;
-    if (rule.name.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("规则名称为空"), QStringLiteral("请输入规则名称，例如“按钮”。"));
-        return;
-    }
-    if (rule.pattern.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
-        return;
-    }
-    if (rule.ruleType == RuleUtils::regexRuleType()) {
-        QRegularExpression re(rule.pattern);
-        if (!re.isValid()) {
-            QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
-            return;
-        }
-    }
-    if (!m_rules.addRule(rule)) {
-        QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
-        return;
-    }
-    m_rulePanel->reload();
-    recalculateRules();
+    addRuleAndRecalculate(input);
 }
 
 void MainWindow::saveChildRule(const RuleRecord& input)
@@ -869,27 +848,40 @@ void MainWindow::saveChildRule(const RuleRecord& input)
     }
     RuleRecord rule = input;
     rule.parentId = m_selectedRule.id;
+    addRuleAndRecalculate(rule);
+}
+
+bool MainWindow::validateRuleForSave(const RuleRecord& rule)
+{
     if (rule.name.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("规则名称为空"), QStringLiteral("请输入规则名称，例如“按钮”。"));
-        return;
+        return false;
     }
     if (rule.pattern.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
-        return;
+        return false;
     }
     if (rule.ruleType == RuleUtils::regexRuleType()) {
         QRegularExpression re(rule.pattern);
         if (!re.isValid()) {
             QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
-            return;
+            return false;
         }
     }
+    return true;
+}
+
+bool MainWindow::addRuleAndRecalculate(const RuleRecord& rule)
+{
+    if (!validateRuleForSave(rule))
+        return false;
     if (!m_rules.addRule(rule)) {
         QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
-        return;
+        return false;
     }
     m_rulePanel->reload();
     recalculateRules();
+    return true;
 }
 
 void MainWindow::recalculateRules()
@@ -907,8 +899,11 @@ void MainWindow::showImage(const QModelIndex& current)
     const QVector<int> matches = m_ruleEngine ? m_ruleEngine->matchedRulesForImage(image.id) : QVector<int>();
     const QVector<RuleRecord> rules = m_rules.fetchRules(false);
     QHash<int, RuleRecord> rulesById;
-    for (const RuleRecord& rule : rules)
+    QHash<int, int> parentById;
+    for (const RuleRecord& rule : rules) {
         rulesById.insert(rule.id, rule);
+        parentById.insert(rule.id, rule.parentId);
+    }
 
     QStringList lines;
     lines << QStringLiteral("当前图片：") << image.relativePath << QString();
@@ -955,8 +950,8 @@ void MainWindow::showImage(const QModelIndex& current)
             const QString pairText = QStringLiteral("- %1  <->  %2\n  %3")
                 .arg(rulePath(a, rulesById),
                      rulePath(b, rulesById),
-                     conflictReason(a, b, rulesById));
-            if (m_ruleEngine && m_ruleEngine->isConflictBetweenRules(a, b))
+                     conflictReason(a, b, rulesById, parentById));
+            if (RuleUtils::isConflictBetweenRules(rulesById, parentById, a, b))
                 conflictLines << pairText;
             else
                 nonConflictLines << pairText;
@@ -1003,7 +998,7 @@ void MainWindow::refreshStats()
         q.exec(sql);
         return q.next() ? q.value(0).toInt() : 0;
     };
-    const QVector<ImageRecord> images = m_images.fetchImages({});
+    const QVector<ImageRecord> images = m_images.fetchAllImages();
     const int total = images.size();
     int classified = 0;
     int unclassified = 0;

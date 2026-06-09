@@ -13,6 +13,7 @@ public:
 
     bool upsertImages(const QVector<ImageRecord>& records);
     QVector<ImageRecord> fetchImages(const ImageFilter& filter, int limit = 50000) const;
+    QVector<ImageRecord> fetchAllImages(const ImageFilter& filter = {}) const;
     ImageRecord fetchImage(int imageId) const;
     bool updateThumbnail(int imageId, const QString& thumbnailPath, int width, int height);
     int imageCount() const;

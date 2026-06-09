@@ -5,7 +5,6 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
-#include <QImageIOHandler>
 #include <QImageReader>
 #include <QtConcurrent>
 
@@ -65,6 +64,7 @@ void ProjectScanner::scan(const QString& resourceDir)
             QFileInfo fi(path);
             QImageReader reader(path);
             const QSize size = reader.size();
+            const QImage image = reader.read();
             ImageRecord r;
             r.absolutePath = fi.absoluteFilePath();
             r.relativePath = QDir::toNativeSeparators(root.relativeFilePath(fi.absoluteFilePath()));
@@ -76,9 +76,7 @@ void ProjectScanner::scan(const QString& resourceDir)
             r.modifiedTime = fi.lastModified().toSecsSinceEpoch();
             r.width = size.width();
             r.height = size.height();
-            r.hasAlpha = reader.supportsOption(QImageIOHandler::ImageFormat)
-                ? QString::fromLatin1(reader.format()).compare("png", Qt::CaseInsensitive) == 0
-                : false;
+            r.hasAlpha = !image.isNull() && image.hasAlphaChannel();
             r.imageFormat = QString::fromLatin1(reader.format()).toLower();
             records << r;
             if (i == 0 || i % 25 == 0 || i + 1 == files.size())

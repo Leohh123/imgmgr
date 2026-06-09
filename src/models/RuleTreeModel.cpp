@@ -105,7 +105,7 @@ void RuleTreeModel::reload()
     bool attached = true;
     while (attached && !rules.isEmpty()) {
         attached = false;
-        for (int i = rules.size() - 1; i >= 0; --i) {
+        for (int i = 0; i < rules.size(); ++i) {
             RuleRecord rule = rules.at(i);
             RuleNode* parentNode = byId.value(rule.parentId, nullptr);
             if (!parentNode)
@@ -117,6 +117,7 @@ void RuleTreeModel::reload()
             parentNode->children.push_back(std::move(node));
             byId.insert(rule.id, raw);
             rules.removeAt(i);
+            --i;
             attached = true;
         }
     }

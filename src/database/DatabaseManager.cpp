@@ -5,6 +5,13 @@
 #include <QSqlError>
 #include <QSqlQuery>
 
+namespace {
+bool isDuplicateColumnError(const QSqlError& error)
+{
+    return error.text().contains(QStringLiteral("duplicate column"), Qt::CaseInsensitive);
+}
+}
+
 DatabaseManager::DatabaseManager(QString connectionName)
     : m_connectionName(std::move(connectionName))
 {
@@ -117,10 +124,17 @@ bool DatabaseManager::initialize()
         QStringLiteral("ALTER TABLE rules ADD COLUMN case_sensitive INTEGER DEFAULT 0"),
         QStringLiteral("ALTER TABLE rules ADD COLUMN whole_match INTEGER DEFAULT 1")
     };
-    for (const QString& sql : migrations)
-        q.exec(sql);
-    q.exec(QStringLiteral("UPDATE images SET file_stem=substr(file_name, 1, length(file_name) - length(extension) - 1) "
-                          "WHERE (file_stem IS NULL OR file_stem='') AND extension IS NOT NULL AND extension != ''"));
+    for (const QString& sql : migrations) {
+        if (!q.exec(sql) && !isDuplicateColumnError(q.lastError())) {
+            m_lastError = q.lastError().text();
+            return false;
+        }
+    }
+    if (!q.exec(QStringLiteral("UPDATE images SET file_stem=substr(file_name, 1, length(file_name) - length(extension) - 1) "
+                               "WHERE (file_stem IS NULL OR file_stem='') AND extension IS NOT NULL AND extension != ''"))) {
+        m_lastError = q.lastError().text();
+        return false;
+    }
     return true;
 }
 

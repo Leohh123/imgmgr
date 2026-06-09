@@ -86,6 +86,39 @@ bool statusAllowed(const ImageFilter& filter, ImageStatus status)
         return filter.onlyMultiMatch;
     return false;
 }
+
+QHash<int, int> loadRuleParents(QSqlDatabase db)
+{
+    QHash<int, int> parentById;
+    QSqlQuery rulesQuery(db);
+    if (rulesQuery.exec("SELECT id, parent_id FROM rules")) {
+        while (rulesQuery.next())
+            parentById.insert(rulesQuery.value(0).toInt(), rulesQuery.value(1).toInt());
+    }
+    return parentById;
+}
+
+ImageRecord imageRecordFromQuery(const QSqlQuery& q)
+{
+    ImageRecord r;
+    r.id = q.value("id").toInt();
+    r.absolutePath = q.value("absolute_path").toString();
+    r.relativePath = q.value("relative_path").toString();
+    r.fileName = q.value("file_name").toString();
+    r.fileStem = q.value("file_stem").toString();
+    r.parentDir = q.value("parent_dir").toString();
+    r.extension = q.value("extension").toString();
+    r.fileSize = q.value("file_size").toLongLong();
+    r.modifiedTime = q.value("modified_time").toLongLong();
+    r.width = q.value("width").toInt();
+    r.height = q.value("height").toInt();
+    r.hasAlpha = q.value("has_alpha").toInt() != 0;
+    r.imageFormat = q.value("image_format").toString();
+    r.thumbnailPath = q.value("thumbnail_path").toString();
+    r.thumbnailReady = q.value("thumbnail_ready").toInt() != 0;
+    r.matchCount = q.value("match_count").toInt();
+    return r;
+}
 }
 
 ImageRepository::ImageRepository(QSqlDatabase db)
@@ -141,12 +174,7 @@ bool ImageRepository::upsertImages(const QVector<ImageRecord>& records)
 
 QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int limit) const
 {
-    QHash<int, int> parentById;
-    QSqlQuery rulesQuery(m_db);
-    if (rulesQuery.exec("SELECT id, parent_id FROM rules")) {
-        while (rulesQuery.next())
-            parentById.insert(rulesQuery.value(0).toInt(), rulesQuery.value(1).toInt());
-    }
+    const QHash<int, int> parentById = loadRuleParents(m_db);
 
     QString sql =
         "SELECT i.*, COUNT(m.rule_id) AS match_count, MAX(COALESCE(m.is_conflict,0)) AS has_conflict, "
@@ -192,8 +220,11 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
         sql += " WHERE " + where.join(" AND ");
 
     sql += " GROUP BY i.id";
-    sql += " ORDER BY i.relative_path LIMIT ?";
-    binds << limit;
+    sql += " ORDER BY i.relative_path";
+    if (limit > 0) {
+        sql += " LIMIT ?";
+        binds << limit;
+    }
 
     QSqlQuery q(m_db);
     q.prepare(sql);
@@ -206,23 +237,7 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
         return out;
     }
     while (q.next()) {
-        ImageRecord r;
-        r.id = q.value("id").toInt();
-        r.absolutePath = q.value("absolute_path").toString();
-        r.relativePath = q.value("relative_path").toString();
-        r.fileName = q.value("file_name").toString();
-        r.fileStem = q.value("file_stem").toString();
-        r.parentDir = q.value("parent_dir").toString();
-        r.extension = q.value("extension").toString();
-        r.fileSize = q.value("file_size").toLongLong();
-        r.modifiedTime = q.value("modified_time").toLongLong();
-        r.width = q.value("width").toInt();
-        r.height = q.value("height").toInt();
-        r.hasAlpha = q.value("has_alpha").toInt() != 0;
-        r.imageFormat = q.value("image_format").toString();
-        r.thumbnailPath = q.value("thumbnail_path").toString();
-        r.thumbnailReady = q.value("thumbnail_ready").toInt() != 0;
-        r.matchCount = q.value("match_count").toInt();
+        ImageRecord r = imageRecordFromQuery(q);
         r.status = statusForMatches(r.matchCount,
             q.value("has_conflict").toInt() != 0,
             parseRuleIds(q.value("matched_rule_ids").toString()),
@@ -243,15 +258,34 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
     return out;
 }
 
+QVector<ImageRecord> ImageRepository::fetchAllImages(const ImageFilter& filter) const
+{
+    return fetchImages(filter, 0);
+}
+
 ImageRecord ImageRepository::fetchImage(int imageId) const
 {
-    ImageFilter f;
-    auto images = fetchImages(f);
-    for (const auto& image : images) {
-        if (image.id == imageId)
-            return image;
+    const QHash<int, int> parentById = loadRuleParents(m_db);
+    QSqlQuery q(m_db);
+    q.prepare(
+        "SELECT i.*, COUNT(m.rule_id) AS match_count, MAX(COALESCE(m.is_conflict,0)) AS has_conflict, "
+        "GROUP_CONCAT(m.rule_id) AS matched_rule_ids "
+        "FROM images i LEFT JOIN image_rule_matches m ON m.image_id=i.id "
+        "WHERE i.id=? GROUP BY i.id");
+    q.addBindValue(imageId);
+    if (!q.exec()) {
+        m_lastError = q.lastError().text();
+        return {};
     }
-    return {};
+    if (!q.next())
+        return {};
+
+    ImageRecord r = imageRecordFromQuery(q);
+    r.status = statusForMatches(r.matchCount,
+        q.value("has_conflict").toInt() != 0,
+        parseRuleIds(q.value("matched_rule_ids").toString()),
+        parentById);
+    return r;
 }
 
 bool ImageRepository::updateThumbnail(int imageId, const QString& thumbnailPath, int width, int height)

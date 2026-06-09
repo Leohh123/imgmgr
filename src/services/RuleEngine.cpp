@@ -22,13 +22,7 @@ bool RuleEngine::isAncestorRule(int possibleAncestorId, int ruleId) const
     QHash<int, int> parentById;
     for (const auto& rule : rules)
         parentById.insert(rule.id, rule.parentId);
-    int current = parentById.value(ruleId, 0);
-    while (current != 0) {
-        if (current == possibleAncestorId)
-            return true;
-        current = parentById.value(current, 0);
-    }
-    return false;
+    return RuleUtils::isAncestorRule(parentById, possibleAncestorId, ruleId);
 }
 
 bool RuleEngine::isConflictBetweenRules(int ruleA, int ruleB) const
@@ -37,11 +31,12 @@ bool RuleEngine::isConflictBetweenRules(int ruleA, int ruleB) const
         return false;
     const auto rules = m_rules->fetchRules(false);
     QHash<int, RuleRecord> byId;
-    for (const auto& rule : rules)
+    QHash<int, int> parentById;
+    for (const auto& rule : rules) {
         byId.insert(rule.id, rule);
-    if (byId.value(ruleA).allowConflict || byId.value(ruleB).allowConflict)
-        return false;
-    return !isAncestorRule(ruleA, ruleB) && !isAncestorRule(ruleB, ruleA);
+        parentById.insert(rule.id, rule.parentId);
+    }
+    return RuleUtils::isConflictBetweenRules(byId, parentById, ruleA, ruleB);
 }
 
 QVector<int> RuleEngine::matchedRulesForImage(int imageId) const
@@ -66,7 +61,7 @@ void RuleEngine::recalculate()
     }
 
     QSqlDatabase db = m_images->database();
-    const auto images = m_images->fetchImages({});
+    const auto images = m_images->fetchAllImages();
     const auto rules = m_rules->fetchRules(true);
     QHash<int, RuleRecord> ruleById;
     QHash<int, int> parentById;
@@ -74,16 +69,6 @@ void RuleEngine::recalculate()
         ruleById.insert(r.id, r);
         parentById.insert(r.id, r.parentId);
     }
-
-    auto isAncestor = [parentById](int ancestor, int id) {
-        int current = parentById.value(id, 0);
-        while (current != 0) {
-            if (current == ancestor)
-                return true;
-            current = parentById.value(current, 0);
-        }
-        return false;
-    };
 
     if (!db.transaction()) {
         emit failed(db.lastError().text());
@@ -125,7 +110,8 @@ void RuleEngine::recalculate()
                 const auto ra = ruleById.value(matched[a]);
                 const auto rb = ruleById.value(matched[b]);
                 const bool allowed = ra.allowConflict || rb.allowConflict
-                    || isAncestor(ra.id, rb.id) || isAncestor(rb.id, ra.id);
+                    || RuleUtils::isAncestorRule(parentById, ra.id, rb.id)
+                    || RuleUtils::isAncestorRule(parentById, rb.id, ra.id);
                 if (!allowed) {
                     conflictRules.insert(ra.id);
                     conflictRules.insert(rb.id);

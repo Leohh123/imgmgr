@@ -29,6 +29,8 @@ QRegularExpression buildRegularExpression(const QString& pattern, const QString&
 bool targetMatches(const QString& target, const QString& pattern, const QString& ruleType, bool caseSensitive, bool wholeMatch);
 bool imageMatchesRule(const ImageRecord& image, const RuleRecord& rule);
 bool imageMatchesFilter(const ImageRecord& image, const ImageFilter& filter);
+bool isAncestorRule(const QHash<int, int>& parentById, int possibleAncestorId, int ruleId);
+bool isConflictBetweenRules(const QHash<int, RuleRecord>& rulesById, const QHash<int, int>& parentById, int ruleA, int ruleB);
 
 QJsonObject ruleToJson(const RuleRecord& rule);
 QJsonObject ruleTreeToJson(const RuleRecord& rule, const QHash<int, QVector<RuleRecord>>& childrenByParent);
