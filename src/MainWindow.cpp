@@ -288,8 +288,7 @@ void MainWindow::bindProjectModels()
     ImageTableUtils::configureColumns(m_table);
     updateImageColumnVisibility();
     reloadImages({});
-    m_selectedRule = {};
-    m_filter->setChildRuleEnabled(false);
+    clearSelectedRule(false);
 
     auto* tabs = findChild<QTabWidget*>();
     if (tabs && !m_rulePanel) {
@@ -313,21 +312,36 @@ bool MainWindow::isCurrentProjectGeneration(quint64 projectGeneration) const
     return projectGeneration == m_projectGeneration;
 }
 
+void MainWindow::selectRuleForFilter(const RuleRecord& rule)
+{
+    m_selectedRule = rule;
+    if (!m_filter)
+        return;
+    m_filter->setChildRuleEnabled(rule.id > 0);
+    m_filter->setRule(rule, rule.enabled);
+}
+
+void MainWindow::clearSelectedRule(bool clearFilterBinding)
+{
+    m_selectedRule = {};
+    if (!m_filter)
+        return;
+    if (clearFilterBinding)
+        m_filter->clearRuleBinding();
+    m_filter->setChildRuleEnabled(false);
+}
+
 void MainWindow::connectRulePanelSignals()
 {
     connect(m_rulePanel, &RulePanel::ruleSelected, this, [this](const RuleRecord& rule) {
-        m_selectedRule = rule;
-        m_filter->setChildRuleEnabled(rule.id > 0);
-        m_filter->setRule(rule, rule.enabled);
+        selectRuleForFilter(rule);
         ImageFilter f = m_filter->filter();
         if (!rule.enabled)
             f.currentRuleId = 0;
         reloadImages(f);
     });
     connect(m_rulePanel, &RulePanel::ruleSelectionCleared, this, [this] {
-        m_selectedRule = {};
-        m_filter->clearRuleBinding();
-        m_filter->setChildRuleEnabled(false);
+        clearSelectedRule(true);
     });
     connect(m_rulePanel, &RulePanel::editRuleRequested, this, [this](const RuleRecord& selectedRule) {
         RuleRecord rule = m_rules.fetchRule(selectedRule.id);
@@ -519,11 +533,7 @@ void MainWindow::importRulesFromJson()
         return;
     }
 
-    m_selectedRule = {};
-    if (m_filter) {
-        m_filter->clearRuleBinding();
-        m_filter->setChildRuleEnabled(false);
-    }
+    clearSelectedRule(true);
     if (m_rulePanel)
         m_rulePanel->reload();
     recalculateRules();

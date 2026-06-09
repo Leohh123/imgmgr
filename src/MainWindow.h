@@ -49,6 +49,8 @@ private:
     void connectScannerSignals(quint64 projectGeneration);
     void connectRuleEngineSignals(quint64 projectGeneration);
     bool isCurrentProjectGeneration(quint64 projectGeneration) const;
+    void selectRuleForFilter(const RuleRecord& rule);
+    void clearSelectedRule(bool clearFilterBinding);
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
