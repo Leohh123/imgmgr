@@ -1,7 +1,8 @@
 #include "services/RuleEngine.h"
 
+#include "utils/RuleUtils.h"
+
 #include <QDateTime>
-#include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QtConcurrent>
@@ -155,33 +156,10 @@ void RuleEngine::recalculate()
 
 QString RuleEngine::targetFor(const ImageRecord& image, const RuleRecord& rule) const
 {
-    if (rule.matchTarget == "relative_path") return image.relativePath;
-    if (rule.matchTarget == "absolute_path") return image.absolutePath;
-    if (rule.matchTarget == "parent_dir") return image.parentDir;
-    if (rule.matchTarget == "filename") return image.fileName;
-    if (rule.matchTarget == "filename_stem") return image.fileStem;
-    return image.fileName;
+    return RuleUtils::targetForImage(image, rule.matchTarget);
 }
 
 bool RuleEngine::matches(const QString& target, const RuleRecord& rule) const
 {
-    QString expression;
-    if (rule.ruleType == "glob") {
-        auto options = rule.wholeMatch
-            ? QRegularExpression::DefaultWildcardConversion
-            : QRegularExpression::UnanchoredWildcardConversion;
-        expression = QRegularExpression::wildcardToRegularExpression(rule.pattern, options);
-    } else {
-        expression = rule.wholeMatch ? QStringLiteral("\\A(?:%1)\\z").arg(rule.pattern) : rule.pattern;
-    }
-    QRegularExpression::PatternOptions patternOptions = QRegularExpression::NoPatternOption;
-    if (!rule.caseSensitive)
-        patternOptions |= QRegularExpression::CaseInsensitiveOption;
-    QRegularExpression re(expression, patternOptions);
-    if (!re.isValid())
-        return false;
-    if (re.match(target).hasMatch())
-        return true;
-    const QString normalized = QString(target).replace('\\', '/');
-    return normalized != target && re.match(normalized).hasMatch();
+    return RuleUtils::targetMatches(target, rule.pattern, rule.ruleType, rule.caseSensitive, rule.wholeMatch);
 }

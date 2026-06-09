@@ -1,5 +1,7 @@
 #include "widgets/FilterPanel.h"
 
+#include "utils/RuleUtils.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
@@ -58,11 +60,11 @@ FilterPanel::FilterPanel(QWidget* parent)
     statusLayout->addStretch();
 
     m_target = new QComboBox(this);
-    m_target->addItem(QStringLiteral("文件名（无后缀）"), "filename_stem");
-    m_target->addItem(QStringLiteral("文件名（有后缀）"), "filename");
-    m_target->addItem(QStringLiteral("相对路径"), "relative_path");
-    m_target->addItem(QStringLiteral("完整路径"), "absolute_path");
-    m_target->addItem(QStringLiteral("父目录"), "parent_dir");
+    m_target->addItem(QStringLiteral("文件名（无后缀）"), RuleUtils::fileNameStemTarget());
+    m_target->addItem(QStringLiteral("文件名（有后缀）"), RuleUtils::fileNameTarget());
+    m_target->addItem(QStringLiteral("相对路径"), RuleUtils::relativePathTarget());
+    m_target->addItem(QStringLiteral("完整路径"), RuleUtils::absolutePathTarget());
+    m_target->addItem(QStringLiteral("父目录"), RuleUtils::parentDirTarget());
 
     m_ruleName = new QLineEdit(this);
     m_ruleName->setPlaceholderText(QStringLiteral("例如：按钮"));
@@ -165,8 +167,8 @@ void FilterPanel::setRule(const RuleRecord& rule, bool bindRuleMatch)
     m_currentRuleId = bindRuleMatch ? rule.id : 0;
     m_ruleName->setText(rule.name);
     m_pattern->setText(rule.pattern);
-    m_regexType->setChecked(rule.ruleType == "regex");
-    m_globType->setChecked(rule.ruleType != "regex");
+    m_regexType->setChecked(rule.ruleType == RuleUtils::regexRuleType());
+    m_globType->setChecked(rule.ruleType != RuleUtils::regexRuleType());
     m_target->setCurrentIndex(m_target->findData(rule.matchTarget));
     m_caseSensitive->setChecked(rule.caseSensitive);
     m_wholeMatch->setChecked(rule.wholeMatch);
@@ -187,7 +189,7 @@ void FilterPanel::setChildRuleEnabled(bool enabled)
 
 QString FilterPanel::ruleType() const
 {
-    return m_regexType && m_regexType->isChecked() ? QStringLiteral("regex") : QStringLiteral("glob");
+    return m_regexType && m_regexType->isChecked() ? RuleUtils::regexRuleType() : RuleUtils::globRuleType();
 }
 
 void FilterPanel::setStatusFiltersChecked(bool checked)

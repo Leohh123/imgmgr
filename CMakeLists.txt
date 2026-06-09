@@ -40,6 +40,8 @@ qt_add_executable(imgmgr
     src/utils/HashUtils.cpp
     src/utils/ImageUtils.h
     src/utils/ImageUtils.cpp
+    src/utils/RuleUtils.h
+    src/utils/RuleUtils.cpp
     src/types.h
 )
 

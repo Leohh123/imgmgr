@@ -1,50 +1,14 @@
 #include "database/ImageRepository.h"
 
+#include "utils/RuleUtils.h"
+
 #include <QHash>
 #include <QQueue>
-#include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QSqlRecord>
 
 namespace {
-QString imageTargetForFilter(const ImageRecord& image, const ImageFilter& filter)
-{
-    if (filter.matchTarget == "relative_path") return image.relativePath;
-    if (filter.matchTarget == "absolute_path") return image.absolutePath;
-    if (filter.matchTarget == "parent_dir") return image.parentDir;
-    if (filter.matchTarget == "filename_stem") return image.fileStem;
-    return image.fileName;
-}
-
-QRegularExpression buildRegex(const QString& pattern, const QString& ruleType, bool caseSensitive, bool wholeMatch)
-{
-    QString expression;
-    if (ruleType == "glob") {
-        auto options = wholeMatch
-            ? QRegularExpression::DefaultWildcardConversion
-            : QRegularExpression::UnanchoredWildcardConversion;
-        expression = QRegularExpression::wildcardToRegularExpression(pattern, options);
-    } else {
-        expression = wholeMatch ? QStringLiteral("\\A(?:%1)\\z").arg(pattern) : pattern;
-    }
-    QRegularExpression::PatternOptions options = QRegularExpression::NoPatternOption;
-    if (!caseSensitive)
-        options |= QRegularExpression::CaseInsensitiveOption;
-    return QRegularExpression(expression, options);
-}
-
-bool targetMatchesPattern(const QString& target, const ImageFilter& filter)
-{
-    QRegularExpression re = buildRegex(filter.pattern.trimmed(), filter.ruleType, filter.caseSensitive, filter.wholeMatch);
-    if (!re.isValid())
-        return false;
-    if (re.match(target).hasMatch())
-        return true;
-    const QString normalized = QString(target).replace('\\', '/');
-    return normalized != target && re.match(normalized).hasMatch();
-}
-
 QString globForSql(const ImageFilter& filter)
 {
     QString pattern = QString(filter.pattern).replace('\\', '/');
@@ -192,11 +156,11 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
     QVariantList binds;
 
     if (!filter.pattern.trimmed().isEmpty()) {
-        const QString col = filter.matchTarget == "relative_path" ? "i.relative_path"
-            : filter.matchTarget == "absolute_path" ? "i.absolute_path"
-            : filter.matchTarget == "parent_dir" ? "i.parent_dir"
-            : filter.matchTarget == "filename" ? "i.file_name" : "i.file_stem";
-        if (filter.ruleType == "glob") {
+        const QString col = filter.matchTarget == RuleUtils::relativePathTarget() ? "i.relative_path"
+            : filter.matchTarget == RuleUtils::absolutePathTarget() ? "i.absolute_path"
+            : filter.matchTarget == RuleUtils::parentDirTarget() ? "i.parent_dir"
+            : filter.matchTarget == RuleUtils::fileNameTarget() ? "i.file_name" : "i.file_stem";
+        if (filter.ruleType == RuleUtils::globRuleType()) {
             const QString sqlValue = filter.caseSensitive
                 ? QString("replace(%1, '\\', '/')").arg(col)
                 : QString("lower(replace(%1, '\\', '/'))").arg(col);
@@ -268,10 +232,10 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
         out << r;
     }
 
-    if (filter.ruleType == "regex" && !filter.pattern.trimmed().isEmpty()) {
+    if (filter.ruleType == RuleUtils::regexRuleType() && !filter.pattern.trimmed().isEmpty()) {
         QVector<ImageRecord> filtered;
         for (const auto& r : out) {
-            if (targetMatchesPattern(imageTargetForFilter(r, filter), filter))
+            if (RuleUtils::imageMatchesFilter(r, filter))
                 filtered << r;
         }
         return filtered;

@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "utils/RuleUtils.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QButtonGroup>
@@ -126,175 +128,6 @@ static void addBackgroundRadio(QHBoxLayout* layout, QButtonGroup* group, QWidget
     layout->addWidget(button);
 }
 
-static QJsonObject ruleToJson(const RuleRecord& rule)
-{
-    QJsonObject object;
-    object.insert(QStringLiteral("id"), rule.id);
-    object.insert(QStringLiteral("name"), rule.name);
-    object.insert(QStringLiteral("rule_type"), rule.ruleType);
-    object.insert(QStringLiteral("pattern"), rule.pattern);
-    object.insert(QStringLiteral("match_target"), rule.matchTarget);
-    object.insert(QStringLiteral("enabled"), rule.enabled);
-    object.insert(QStringLiteral("priority"), rule.priority);
-    object.insert(QStringLiteral("allow_conflict"), rule.allowConflict);
-    object.insert(QStringLiteral("case_sensitive"), rule.caseSensitive);
-    object.insert(QStringLiteral("whole_match"), rule.wholeMatch);
-    object.insert(QStringLiteral("note"), rule.note);
-    return object;
-}
-
-static QJsonObject ruleTreeToJson(const RuleRecord& rule, const QHash<int, QVector<RuleRecord>>& childrenByParent)
-{
-    QJsonObject object = ruleToJson(rule);
-    QJsonArray children;
-    const QVector<RuleRecord> childRules = childrenByParent.value(rule.id);
-    for (const RuleRecord& child : childRules)
-        children.append(ruleTreeToJson(child, childrenByParent));
-    object.insert(QStringLiteral("children"), children);
-    return object;
-}
-
-static bool jsonToRule(const QJsonObject& object, int parentId, RuleRecord* rule, QString* error)
-{
-    const QStringList required = {
-        QStringLiteral("id"),
-        QStringLiteral("name"),
-        QStringLiteral("rule_type"),
-        QStringLiteral("pattern"),
-        QStringLiteral("match_target")
-    };
-    for (const QString& key : required) {
-        if (!object.contains(key)) {
-            if (error)
-                *error = QStringLiteral("规则缺少字段：%1").arg(key);
-            return false;
-        }
-    }
-
-    RuleRecord result;
-    result.id = object.value(QStringLiteral("id")).toInt();
-    result.parentId = parentId;
-    result.name = object.value(QStringLiteral("name")).toString().trimmed();
-    result.ruleType = object.value(QStringLiteral("rule_type")).toString();
-    result.pattern = object.value(QStringLiteral("pattern")).toString().trimmed();
-    result.matchTarget = object.value(QStringLiteral("match_target")).toString();
-    result.enabled = object.value(QStringLiteral("enabled")).toBool(true);
-    result.priority = object.value(QStringLiteral("priority")).toInt();
-    result.allowConflict = object.value(QStringLiteral("allow_conflict")).toBool(false);
-    result.caseSensitive = object.value(QStringLiteral("case_sensitive")).toBool(false);
-    result.wholeMatch = object.value(QStringLiteral("whole_match")).toBool(true);
-    result.note = object.value(QStringLiteral("note")).toString();
-
-    if (result.id <= 0) {
-        if (error)
-            *error = QStringLiteral("规则 ID 必须大于 0。");
-        return false;
-    }
-    if (result.name.isEmpty() || result.pattern.isEmpty()) {
-        if (error)
-            *error = QStringLiteral("规则名称和规则内容不能为空。");
-        return false;
-    }
-    if (result.ruleType != QStringLiteral("glob") && result.ruleType != QStringLiteral("regex")) {
-        if (error)
-            *error = QStringLiteral("规则类型无效：%1").arg(result.ruleType);
-        return false;
-    }
-    const QSet<QString> targets = {
-        QStringLiteral("filename_stem"),
-        QStringLiteral("filename"),
-        QStringLiteral("relative_path"),
-        QStringLiteral("absolute_path"),
-        QStringLiteral("parent_dir")
-    };
-    if (!targets.contains(result.matchTarget)) {
-        if (error)
-            *error = QStringLiteral("匹配目标无效：%1").arg(result.matchTarget);
-        return false;
-    }
-    if (result.ruleType == QStringLiteral("regex")) {
-        const QRegularExpression re(result.pattern);
-        if (!re.isValid()) {
-            if (error)
-                *error = QStringLiteral("正则表达式无效：%1").arg(re.errorString());
-            return false;
-        }
-    }
-
-    *rule = result;
-    return true;
-}
-
-static bool appendRulesFromJsonTree(const QJsonArray& array, int parentId, QVector<RuleRecord>* rules, QString* error)
-{
-    for (const QJsonValue& value : array) {
-        if (!value.isObject()) {
-            if (error)
-                *error = QStringLiteral("rules/children 数组中存在非对象元素。");
-            return false;
-        }
-
-        const QJsonObject object = value.toObject();
-        RuleRecord rule;
-        if (!jsonToRule(object, parentId, &rule, error))
-            return false;
-        rules->append(rule);
-
-        const QJsonValue childrenValue = object.value(QStringLiteral("children"));
-        if (!childrenValue.isUndefined()) {
-            if (!childrenValue.isArray()) {
-                if (error)
-                    *error = QStringLiteral("规则“%1”的 children 必须是数组。").arg(rule.name);
-                return false;
-            }
-            if (!appendRulesFromJsonTree(childrenValue.toArray(), rule.id, rules, error))
-                return false;
-        }
-    }
-    return true;
-}
-
-static bool validateImportedRules(const QVector<RuleRecord>& rules, QString* error)
-{
-    QSet<int> ids;
-    QHash<int, int> parentById;
-    for (const RuleRecord& rule : rules) {
-        if (ids.contains(rule.id)) {
-            if (error)
-                *error = QStringLiteral("规则 ID 重复：%1").arg(rule.id);
-            return false;
-        }
-        ids.insert(rule.id);
-        parentById.insert(rule.id, rule.parentId);
-    }
-
-    for (const RuleRecord& rule : rules) {
-        if (rule.parentId == rule.id) {
-            if (error)
-                *error = QStringLiteral("规则不能作为自己的父规则：%1").arg(rule.name);
-            return false;
-        }
-        if (rule.parentId != 0 && !ids.contains(rule.parentId)) {
-            if (error)
-                *error = QStringLiteral("规则“%1”的父规则不存在。").arg(rule.name);
-            return false;
-        }
-
-        QSet<int> seen;
-        int current = rule.parentId;
-        while (current != 0) {
-            if (seen.contains(current)) {
-                if (error)
-                    *error = QStringLiteral("规则树存在循环。");
-                return false;
-            }
-            seen.insert(current);
-            current = parentById.value(current, 0);
-        }
-    }
-    return true;
-}
-
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -369,7 +202,7 @@ void MainWindow::buildUi()
     statusBar()->addPermanentWidget(m_progress);
 
     connect(m_filter, &FilterPanel::filterRequested, this, [this](const ImageFilter& f) {
-        if (f.ruleType == "regex" && !f.pattern.trimmed().isEmpty()) {
+        if (f.ruleType == RuleUtils::regexRuleType() && !f.pattern.trimmed().isEmpty()) {
             QRegularExpression re(f.pattern);
             if (!re.isValid()) {
                 QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
@@ -686,7 +519,7 @@ void MainWindow::exportRulesToJson()
     for (const RuleRecord& rule : rules)
         childrenByParent[rule.parentId].append(rule);
     for (const RuleRecord& rule : childrenByParent.value(0))
-        ruleArray.append(ruleTreeToJson(rule, childrenByParent));
+        ruleArray.append(RuleUtils::ruleTreeToJson(rule, childrenByParent));
 
     QJsonObject root;
     root.insert(QStringLiteral("format"), QStringLiteral("imgmgr.rules"));
@@ -746,12 +579,12 @@ void MainWindow::importRulesFromJson()
 
     QString error;
     QVector<RuleRecord> rules;
-    if (!appendRulesFromJsonTree(ruleArray, 0, &rules, &error)) {
+    if (!RuleUtils::appendRulesFromJsonTree(ruleArray, 0, &rules, &error)) {
         QMessageBox::critical(this, QStringLiteral("导入失败"), error);
         return;
     }
 
-    if (!validateImportedRules(rules, &error)) {
+    if (!RuleUtils::validateImportedRules(rules, &error)) {
         QMessageBox::critical(this, QStringLiteral("导入失败"), error);
         return;
     }
@@ -822,18 +655,18 @@ bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
 
     auto* pattern = new QLineEdit(rule.pattern, &dialog);
     auto* type = new QComboBox(&dialog);
-    type->addItem(QStringLiteral("通配符"), "glob");
-    type->addItem(QStringLiteral("正则表达式"), "regex");
+    type->addItem(QStringLiteral("通配符"), RuleUtils::globRuleType());
+    type->addItem(QStringLiteral("正则表达式"), RuleUtils::regexRuleType());
     type->setCurrentIndex(type->findData(rule.ruleType));
     if (type->currentIndex() < 0)
         type->setCurrentIndex(0);
 
     auto* target = new QComboBox(&dialog);
-    target->addItem(QStringLiteral("文件名（无后缀）"), "filename_stem");
-    target->addItem(QStringLiteral("文件名（有后缀）"), "filename");
-    target->addItem(QStringLiteral("相对路径"), "relative_path");
-    target->addItem(QStringLiteral("完整路径"), "absolute_path");
-    target->addItem(QStringLiteral("父目录"), "parent_dir");
+    target->addItem(QStringLiteral("文件名（无后缀）"), RuleUtils::fileNameStemTarget());
+    target->addItem(QStringLiteral("文件名（有后缀）"), RuleUtils::fileNameTarget());
+    target->addItem(QStringLiteral("相对路径"), RuleUtils::relativePathTarget());
+    target->addItem(QStringLiteral("完整路径"), RuleUtils::absolutePathTarget());
+    target->addItem(QStringLiteral("父目录"), RuleUtils::parentDirTarget());
     target->setCurrentIndex(target->findData(rule.matchTarget));
     if (target->currentIndex() < 0)
         target->setCurrentIndex(0);
@@ -883,7 +716,7 @@ bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
             QMessageBox::warning(&dialog, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
             continue;
         }
-        if (type->currentData().toString() == "regex") {
+        if (type->currentData().toString() == RuleUtils::regexRuleType()) {
             QRegularExpression re(rulePattern);
             if (!re.isValid()) {
                 QMessageBox::warning(&dialog, QStringLiteral("正则无效"), re.errorString());
@@ -1011,7 +844,7 @@ void MainWindow::saveRule(const RuleRecord& input)
         QMessageBox::warning(this, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
         return;
     }
-    if (rule.ruleType == "regex") {
+    if (rule.ruleType == RuleUtils::regexRuleType()) {
         QRegularExpression re(rule.pattern);
         if (!re.isValid()) {
             QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
@@ -1044,7 +877,7 @@ void MainWindow::saveChildRule(const RuleRecord& input)
         QMessageBox::warning(this, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
         return;
     }
-    if (rule.ruleType == "regex") {
+    if (rule.ruleType == RuleUtils::regexRuleType()) {
         QRegularExpression re(rule.pattern);
         if (!re.isValid()) {
             QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
