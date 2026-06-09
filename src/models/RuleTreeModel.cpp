@@ -3,6 +3,57 @@
 #include <QBrush>
 #include <QHash>
 
+namespace {
+QVariant displayValueForColumn(const RuleRecord& rule, int column)
+{
+    switch (column) {
+    case RuleTreeModel::NameColumn: return rule.name;
+    case RuleTreeModel::TypeColumn: return rule.ruleType;
+    case RuleTreeModel::PatternColumn: return rule.pattern;
+    case RuleTreeModel::TargetColumn: return rule.matchTarget;
+    case RuleTreeModel::CaseSensitiveColumn: return rule.caseSensitive ? QStringLiteral("是") : QStringLiteral("否");
+    case RuleTreeModel::WholeMatchColumn: return rule.wholeMatch ? QStringLiteral("是") : QStringLiteral("否");
+    case RuleTreeModel::EnabledColumn: return rule.enabled ? QStringLiteral("启用") : QStringLiteral("禁用");
+    case RuleTreeModel::MatchCountColumn: return rule.matchCount;
+    case RuleTreeModel::ConflictCountColumn: return rule.conflictCount;
+    case RuleTreeModel::PriorityColumn: return rule.priority;
+    default: return {};
+    }
+}
+
+QString headerTitleForColumn(int section)
+{
+    switch (section) {
+    case RuleTreeModel::NameColumn: return QStringLiteral("规则名称");
+    case RuleTreeModel::TypeColumn: return QStringLiteral("类型");
+    case RuleTreeModel::PatternColumn: return QStringLiteral("规则内容");
+    case RuleTreeModel::TargetColumn: return QStringLiteral("匹配目标");
+    case RuleTreeModel::CaseSensitiveColumn: return QStringLiteral("区分大小写");
+    case RuleTreeModel::WholeMatchColumn: return QStringLiteral("全字匹配");
+    case RuleTreeModel::EnabledColumn: return QStringLiteral("状态");
+    case RuleTreeModel::MatchCountColumn: return QStringLiteral("命中");
+    case RuleTreeModel::ConflictCountColumn: return QStringLiteral("冲突");
+    case RuleTreeModel::PriorityColumn: return QStringLiteral("优先级");
+    default: return {};
+    }
+}
+
+std::unique_ptr<RuleNode> makeNode(const RuleRecord& rule, RuleNode* parent)
+{
+    auto node = std::make_unique<RuleNode>();
+    node->rule = rule;
+    node->parent = parent;
+    return node;
+}
+
+RuleNode* appendChildNode(RuleNode* parent, std::unique_ptr<RuleNode> node)
+{
+    RuleNode* raw = node.get();
+    parent->children.push_back(std::move(node));
+    return raw;
+}
+}
+
 RuleTreeModel::RuleTreeModel(RuleRepository* repository, QObject* parent)
     : QAbstractItemModel(parent)
     , m_repository(repository)
@@ -53,21 +104,8 @@ QVariant RuleTreeModel::data(const QModelIndex& index, int role) const
     if (!index.isValid())
         return {};
     const RuleRecord& r = nodeFromIndex(index)->rule;
-    if (role == Qt::DisplayRole) {
-        switch (index.column()) {
-        case NameColumn: return r.name;
-        case TypeColumn: return r.ruleType;
-        case PatternColumn: return r.pattern;
-        case TargetColumn: return r.matchTarget;
-        case CaseSensitiveColumn: return r.caseSensitive ? QStringLiteral("是") : QStringLiteral("否");
-        case WholeMatchColumn: return r.wholeMatch ? QStringLiteral("是") : QStringLiteral("否");
-        case EnabledColumn: return r.enabled ? QStringLiteral("启用") : QStringLiteral("禁用");
-        case MatchCountColumn: return r.matchCount;
-        case ConflictCountColumn: return r.conflictCount;
-        case PriorityColumn: return r.priority;
-        default: return {};
-        }
-    }
+    if (role == Qt::DisplayRole)
+        return displayValueForColumn(r, index.column());
     if (role == Qt::ForegroundRole && !r.enabled)
         return QBrush(Qt::gray);
     if (role == Qt::UserRole)
@@ -79,19 +117,7 @@ QVariant RuleTreeModel::headerData(int section, Qt::Orientation orientation, int
 {
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
         return {};
-    switch (section) {
-    case NameColumn: return QStringLiteral("规则名称");
-    case TypeColumn: return QStringLiteral("类型");
-    case PatternColumn: return QStringLiteral("规则内容");
-    case TargetColumn: return QStringLiteral("匹配目标");
-    case CaseSensitiveColumn: return QStringLiteral("区分大小写");
-    case WholeMatchColumn: return QStringLiteral("全字匹配");
-    case EnabledColumn: return QStringLiteral("状态");
-    case MatchCountColumn: return QStringLiteral("命中");
-    case ConflictCountColumn: return QStringLiteral("冲突");
-    case PriorityColumn: return QStringLiteral("优先级");
-    default: return {};
-    }
+    return headerTitleForColumn(section);
 }
 
 void RuleTreeModel::reload()
@@ -110,11 +136,7 @@ void RuleTreeModel::reload()
             RuleNode* parentNode = byId.value(rule.parentId, nullptr);
             if (!parentNode)
                 continue;
-            auto node = std::make_unique<RuleNode>();
-            node->rule = rule;
-            node->parent = parentNode;
-            RuleNode* raw = node.get();
-            parentNode->children.push_back(std::move(node));
+            RuleNode* raw = appendChildNode(parentNode, makeNode(rule, parentNode));
             byId.insert(rule.id, raw);
             rules.removeAt(i);
             --i;
@@ -122,10 +144,7 @@ void RuleTreeModel::reload()
         }
     }
     for (const auto& rule : rules) {
-        auto node = std::make_unique<RuleNode>();
-        node->rule = rule;
-        node->parent = m_root.get();
-        m_root->children.push_back(std::move(node));
+        appendChildNode(m_root.get(), makeNode(rule, m_root.get()));
     }
     endResetModel();
 }
