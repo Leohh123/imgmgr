@@ -3,9 +3,41 @@
 #include "utils/RuleUtils.h"
 
 #include <QDateTime>
+#include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QtConcurrent>
+
+namespace {
+struct CompiledRule {
+    RuleRecord rule;
+    QRegularExpression expression;
+
+    bool matches(const ImageRecord& image) const
+    {
+        if (!expression.isValid())
+            return false;
+        const QString target = RuleUtils::targetForImage(image, rule.matchTarget);
+        if (expression.match(target).hasMatch())
+            return true;
+        const QString normalized = QString(target).replace('\\', '/');
+        return normalized != target && expression.match(normalized).hasMatch();
+    }
+};
+
+QVector<CompiledRule> compileRules(const QVector<RuleRecord>& rules)
+{
+    QVector<CompiledRule> compiled;
+    compiled.reserve(rules.size());
+    for (const RuleRecord& rule : rules) {
+        compiled << CompiledRule {
+            rule,
+            RuleUtils::buildRegularExpression(rule.pattern.trimmed(), rule.ruleType, rule.caseSensitive, rule.wholeMatch)
+        };
+    }
+    return compiled;
+}
+}
 
 RuleEngine::RuleEngine(ImageRepository* images, RuleRepository* rules, QObject* parent)
     : QObject(parent)
@@ -63,6 +95,7 @@ void RuleEngine::recalculate()
     QSqlDatabase db = m_images->database();
     const auto images = m_images->fetchAllImages();
     const auto rules = m_rules->fetchRules(true);
+    const QVector<CompiledRule> compiledRules = compileRules(rules);
     QHash<int, RuleRecord> ruleById;
     QHash<int, int> parentById;
     for (const auto& r : rules) {
@@ -86,9 +119,9 @@ void RuleEngine::recalculate()
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     for (int i = 0; i < images.size(); ++i) {
         QVector<int> matched;
-        for (const auto& rule : rules) {
-            if (matches(targetFor(images.at(i), rule), rule))
-                matched << rule.id;
+        for (const CompiledRule& compiledRule : compiledRules) {
+            if (compiledRule.matches(images.at(i)))
+                matched << compiledRule.rule.id;
         }
         QSet<int> matchedSet;
         for (int id : matched)
@@ -138,14 +171,4 @@ void RuleEngine::recalculate()
     }
     emit progress(images.size(), images.size());
     emit finished();
-}
-
-QString RuleEngine::targetFor(const ImageRecord& image, const RuleRecord& rule) const
-{
-    return RuleUtils::targetForImage(image, rule.matchTarget);
-}
-
-bool RuleEngine::matches(const QString& target, const RuleRecord& rule) const
-{
-    return RuleUtils::targetMatches(target, rule.pattern, rule.ruleType, rule.caseSensitive, rule.wholeMatch);
 }

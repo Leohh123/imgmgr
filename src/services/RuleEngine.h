@@ -24,9 +24,6 @@ signals:
     void failed(const QString& error);
 
 private:
-    QString targetFor(const ImageRecord& image, const RuleRecord& rule) const;
-    bool matches(const QString& target, const RuleRecord& rule) const;
-
     ImageRepository* m_images = nullptr;
     RuleRepository* m_rules = nullptr;
 };
