@@ -1,6 +1,5 @@
 #include "utils/ImageUtils.h"
 
-#include <QColor>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QSet>
@@ -37,16 +36,16 @@ QImage ImageUtils::buildChannelView(const QImage& source, bool showR, bool showG
         const auto* inLine = reinterpret_cast<const QRgb*>(src.constScanLine(y));
         auto* outLine = reinterpret_cast<QRgb*>(out.scanLine(y));
         for (int x = 0; x < src.width(); ++x) {
-            const QColor c = QColor::fromRgba(inLine[x]);
+            const QRgb pixel = inLine[x];
             if (!showR && !showG && !showB && showA) {
-                const int a = c.alpha();
+                const int a = qAlpha(pixel);
                 outLine[x] = qRgba(a, a, a, 255);
                 continue;
             }
-            const int r = showR ? c.red() : 0;
-            const int g = showG ? c.green() : 0;
-            const int b = showB ? c.blue() : 0;
-            const int a = showA ? c.alpha() : 255;
+            const int r = showR ? qRed(pixel) : 0;
+            const int g = showG ? qGreen(pixel) : 0;
+            const int b = showB ? qBlue(pixel) : 0;
+            const int a = showA ? qAlpha(pixel) : 255;
             outLine[x] = qRgba(r, g, b, a);
         }
     }

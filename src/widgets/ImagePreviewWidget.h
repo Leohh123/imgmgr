@@ -10,7 +10,9 @@
 
 class QCheckBox;
 class QComboBox;
+class QButtonGroup;
 class QPaintEvent;
+class QPushButton;
 class QResizeEvent;
 class QScrollArea;
 class PreviewBackgroundViewport;
@@ -47,6 +49,9 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
+    void createControls();
+    void buildLayout();
+    void connectControls();
     void refresh();
     void updatePixelInfo(const QPoint& widgetPos);
     double fitScale() const;
@@ -65,6 +70,11 @@ private:
     QCheckBox* m_g = nullptr;
     QCheckBox* m_b = nullptr;
     QCheckBox* m_a = nullptr;
+    QPushButton* m_fitButton = nullptr;
+    QPushButton* m_actualSizeButton = nullptr;
+    QPushButton* m_zoomInButton = nullptr;
+    QPushButton* m_zoomOutButton = nullptr;
+    QButtonGroup* m_backgroundGroup = nullptr;
     double m_scale = 1.0;
     bool m_fitToWindow = false;
     QColor m_backgroundColor;

@@ -1,6 +1,7 @@
 #include "widgets/ImagePreviewWidget.h"
 
 #include "utils/ImageUtils.h"
+#include "utils/PaintUtils.h"
 
 #include <QApplication>
 #include <QButtonGroup>
@@ -20,23 +21,6 @@
 #include <QResizeEvent>
 
 namespace {
-void paintBackground(QPainter* painter, const QRect& rect, const QColor& color, bool checkerboard)
-{
-    if (!checkerboard) {
-        painter->fillRect(rect, color);
-        return;
-    }
-    const int cell = 12;
-    const QColor light(238, 238, 238);
-    const QColor dark(185, 185, 185);
-    for (int y = rect.top(); y <= rect.bottom(); y += cell) {
-        for (int x = rect.left(); x <= rect.right(); x += cell) {
-            const bool alternate = ((x / cell) + (y / cell)) % 2;
-            painter->fillRect(QRect(x, y, cell, cell).intersected(rect), alternate ? dark : light);
-        }
-    }
-}
-
 void addBackgroundRadio(QHBoxLayout* layout, QButtonGroup* group, QWidget* parent, const QString& text, int id, bool checked = false)
 {
     auto* button = new QRadioButton(text, parent);
@@ -75,7 +59,7 @@ protected:
     void paintEvent(QPaintEvent* event) override
     {
         QPainter painter(this);
-        paintBackground(&painter, event->rect(), m_backgroundColor, m_checkerboardBackground);
+        PaintUtils::paintBackgroundPreset(&painter, event->rect(), m_backgroundColor, m_checkerboardBackground);
     }
 
 private:
@@ -93,7 +77,7 @@ void PreviewImageLabel::setBackgroundPreset(const QColor& color, bool checkerboa
 void PreviewImageLabel::paintEvent(QPaintEvent* event)
 {
     QPainter painter(this);
-    paintBackground(&painter, event->rect(), m_backgroundColor, m_checkerboardBackground);
+    PaintUtils::paintBackgroundPreset(&painter, event->rect(), m_backgroundColor, m_checkerboardBackground);
     painter.end();
     QLabel::paintEvent(event);
 }
@@ -138,6 +122,13 @@ void PreviewImageLabel::mouseReleaseEvent(QMouseEvent* event)
 ImagePreviewWidget::ImagePreviewWidget(QWidget* parent)
     : QWidget(parent)
 {
+    createControls();
+    buildLayout();
+    connectControls();
+}
+
+void ImagePreviewWidget::createControls()
+{
     m_imageLabel = new PreviewImageLabel(this);
     m_imageLabel->setMouseTracking(true);
     m_imageLabel->setAlignment(Qt::AlignCenter);
@@ -155,28 +146,11 @@ ImagePreviewWidget::ImagePreviewWidget(QWidget* parent)
     m_b->setChecked(true);
     m_a->setChecked(true);
 
-    auto* fit = new QPushButton(QStringLiteral("适应窗口"), this);
-    auto* actual = new QPushButton(QStringLiteral("原始尺寸"), this);
-    auto* zoomIn = new QPushButton(QStringLiteral("放大"), this);
-    auto* zoomOut = new QPushButton(QStringLiteral("缩小"), this);
-    auto* backgroundGroup = new QButtonGroup(this);
-    auto* tools = new QHBoxLayout;
-    tools->addWidget(fit);
-    tools->addWidget(actual);
-    tools->addWidget(zoomIn);
-    tools->addWidget(zoomOut);
-    addVerticalSeparator(tools, this);
-    addBackgroundRadio(tools, backgroundGroup, this, QStringLiteral("棋盘格"), 0, true);
-    addBackgroundRadio(tools, backgroundGroup, this, QStringLiteral("系统"), 1);
-    addBackgroundRadio(tools, backgroundGroup, this, QStringLiteral("黑色"), 2);
-    addBackgroundRadio(tools, backgroundGroup, this, QStringLiteral("白色"), 3);
-    addBackgroundRadio(tools, backgroundGroup, this, QStringLiteral("灰色"), 4);
-    tools->addStretch();
-    addVerticalSeparator(tools, this);
-    tools->addWidget(m_r);
-    tools->addWidget(m_g);
-    tools->addWidget(m_b);
-    tools->addWidget(m_a);
+    m_fitButton = new QPushButton(QStringLiteral("适应窗口"), this);
+    m_actualSizeButton = new QPushButton(QStringLiteral("原始尺寸"), this);
+    m_zoomInButton = new QPushButton(QStringLiteral("放大"), this);
+    m_zoomOutButton = new QPushButton(QStringLiteral("缩小"), this);
+    m_backgroundGroup = new QButtonGroup(this);
 
     m_scrollArea = new QScrollArea(this);
     m_viewport = new PreviewBackgroundViewport(m_scrollArea);
@@ -185,33 +159,57 @@ ImagePreviewWidget::ImagePreviewWidget(QWidget* parent)
     m_scrollArea->setWidgetResizable(false);
     m_scrollArea->setAlignment(Qt::AlignCenter);
     applyBackgroundColor();
+}
+
+void ImagePreviewWidget::buildLayout()
+{
+    auto* tools = new QHBoxLayout;
+    tools->addWidget(m_fitButton);
+    tools->addWidget(m_actualSizeButton);
+    tools->addWidget(m_zoomInButton);
+    tools->addWidget(m_zoomOutButton);
+    addVerticalSeparator(tools, this);
+    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("棋盘格"), 0, true);
+    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("系统"), 1);
+    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("黑色"), 2);
+    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("白色"), 3);
+    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("灰色"), 4);
+    tools->addStretch();
+    addVerticalSeparator(tools, this);
+    tools->addWidget(m_r);
+    tools->addWidget(m_g);
+    tools->addWidget(m_b);
+    tools->addWidget(m_a);
 
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(tools);
     layout->addWidget(m_scrollArea, 1);
     layout->addWidget(m_infoLabel);
     layout->addWidget(m_pixelLabel);
+}
 
+void ImagePreviewWidget::connectControls()
+{
     auto refreshFn = [this] { refresh(); };
     connect(m_r, &QCheckBox::toggled, this, refreshFn);
     connect(m_g, &QCheckBox::toggled, this, refreshFn);
     connect(m_b, &QCheckBox::toggled, this, refreshFn);
     connect(m_a, &QCheckBox::toggled, this, refreshFn);
-    connect(fit, &QPushButton::clicked, this, [this] { m_fitToWindow = true; refresh(); });
-    connect(actual, &QPushButton::clicked, this, [this] { m_fitToWindow = false; m_scale = 1.0; refresh(); });
-    connect(zoomIn, &QPushButton::clicked, this, [this] {
+    connect(m_fitButton, &QPushButton::clicked, this, [this] { m_fitToWindow = true; refresh(); });
+    connect(m_actualSizeButton, &QPushButton::clicked, this, [this] { m_fitToWindow = false; m_scale = 1.0; refresh(); });
+    connect(m_zoomInButton, &QPushButton::clicked, this, [this] {
         const double base = m_fitToWindow ? fitScale() : m_scale;
         m_fitToWindow = false;
         m_scale = base * 1.25;
         refresh();
     });
-    connect(zoomOut, &QPushButton::clicked, this, [this] {
+    connect(m_zoomOutButton, &QPushButton::clicked, this, [this] {
         const double base = m_fitToWindow ? fitScale() : m_scale;
         m_fitToWindow = false;
         m_scale = base / 1.25;
         refresh();
     });
-    connect(backgroundGroup, &QButtonGroup::idClicked, this, [this](int id) {
+    connect(m_backgroundGroup, &QButtonGroup::idClicked, this, [this](int id) {
         switch (id) {
         case 0: setBackgroundPreset(QApplication::palette().color(QPalette::Highlight), true); break;
         case 1: setBackgroundPreset(QApplication::palette().color(QPalette::Highlight), false); break;

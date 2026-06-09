@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "utils/PaintUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QAction>
@@ -23,10 +24,10 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QElapsedTimer>
+#include <QPainter>
 #include <QProgressBar>
 #include <QRadioButton>
 #include <QRegularExpression>
-#include <QPainter>
 #include <QSettings>
 #include <QSplitter>
 #include <QSpinBox>
@@ -39,23 +40,6 @@
 #include <QTextEdit>
 #include <QSet>
 #include <QVBoxLayout>
-
-static void paintBackgroundPreset(QPainter* painter, const QRect& rect, const QColor& color, bool checkerboard)
-{
-    if (!checkerboard) {
-        painter->fillRect(rect, color);
-        return;
-    }
-    const int cell = 12;
-    const QColor light(238, 238, 238);
-    const QColor dark(185, 185, 185);
-    for (int y = rect.top(); y <= rect.bottom(); y += cell) {
-        for (int x = rect.left(); x <= rect.right(); x += cell) {
-            const bool alternate = ((x / cell) + (y / cell)) % 2;
-            painter->fillRect(QRect(x, y, cell, cell).intersected(rect), alternate ? dark : light);
-        }
-    }
-}
 
 class ThumbnailDelegate : public QStyledItemDelegate {
 public:
@@ -85,7 +69,7 @@ public:
                 background = value.value<QColor>();
         }
         const bool checkerboard = opt.widget && opt.widget->property("thumbnailCheckerboardBackground").toBool();
-        paintBackgroundPreset(painter, option.rect.adjusted(1, 1, -1, -1), background, checkerboard);
+        PaintUtils::paintBackgroundPreset(painter, option.rect.adjusted(1, 1, -1, -1), background, checkerboard);
 
         if (pixmap.isNull())
             return;
