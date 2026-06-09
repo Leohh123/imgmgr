@@ -1,11 +1,45 @@
 #include "models/ImageListModel.h"
 
+#include "utils/ImageTableUtils.h"
+
 #include <QBrush>
 #include <QFontMetrics>
 #include <QIcon>
 #include <QApplication>
 #include <QPixmap>
 #include <QSize>
+
+namespace {
+constexpr int ThumbnailExtent = 128;
+
+QVariant displayValueForColumn(const ImageRecord& image, int column)
+{
+    switch (column) {
+    case ImageListModel::FileNameColumn: return image.fileName;
+    case ImageListModel::RelativePathColumn: return image.relativePath;
+    case ImageListModel::SizeColumn: return QStringLiteral("%1 x %2").arg(image.width).arg(image.height);
+    case ImageListModel::FileSizeColumn: return QString::number(image.fileSize / 1024.0, 'f', 1) + QStringLiteral(" KB");
+    case ImageListModel::MatchCountColumn: return image.matchCount;
+    case ImageListModel::StatusColumn: return imageStatusText(image.status);
+    default: return {};
+    }
+}
+
+QSize rowSizeHint(const ImageRecord& image, int column)
+{
+    const int textHeight = QFontMetrics(QApplication::font()).height() + 10;
+    int imageHeight = 0;
+    if (image.width > 0 && image.height > 0) {
+        QSize shown(image.width, image.height);
+        shown.scale(QSize(ThumbnailExtent, ThumbnailExtent), Qt::KeepAspectRatio);
+        imageHeight = shown.height() + 8;
+    }
+    const int rowHeight = qMax(textHeight, imageHeight);
+    return column == ImageListModel::ThumbnailColumn
+        ? QSize(ThumbnailExtent, rowHeight)
+        : QSize(80, rowHeight);
+}
+}
 
 ImageListModel::ImageListModel(ImageRepository* repository, ThumbnailCache* thumbnails, QObject* parent)
     : QAbstractTableModel(parent)
@@ -40,31 +74,12 @@ QVariant ImageListModel::data(const QModelIndex& index, int role) const
         return {};
     const auto& image = m_images.at(index.row());
     if (role == Qt::DecorationRole && index.column() == ThumbnailColumn && m_thumbnails)
-        return QPixmap::fromImage(m_thumbnails->thumbnail(image, QSize(128, 128))).scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    if (role == Qt::SizeHintRole) {
-        const int textHeight = QFontMetrics(QApplication::font()).height() + 10;
-        int imageHeight = 0;
-        if (image.width > 0 && image.height > 0) {
-            QSize shown(image.width, image.height);
-            shown.scale(QSize(128, 128), Qt::KeepAspectRatio);
-            imageHeight = shown.height() + 8;
-        }
-        const int rowHeight = qMax(textHeight, imageHeight);
-        if (index.column() == ThumbnailColumn)
-            return QSize(128, rowHeight);
-        return QSize(80, rowHeight);
-    }
-    if (role == Qt::DisplayRole) {
-        switch (index.column()) {
-        case FileNameColumn: return image.fileName;
-        case RelativePathColumn: return image.relativePath;
-        case SizeColumn: return QString("%1 x %2").arg(image.width).arg(image.height);
-        case FileSizeColumn: return QString::number(image.fileSize / 1024.0, 'f', 1) + " KB";
-        case MatchCountColumn: return image.matchCount;
-        case StatusColumn: return imageStatusText(image.status);
-        default: return {};
-        }
-    }
+        return QPixmap::fromImage(m_thumbnails->thumbnail(image, QSize(ThumbnailExtent, ThumbnailExtent)))
+            .scaled(ThumbnailExtent, ThumbnailExtent, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (role == Qt::SizeHintRole)
+        return rowSizeHint(image, index.column());
+    if (role == Qt::DisplayRole)
+        return displayValueForColumn(image, index.column());
     if (role == Qt::BackgroundRole && image.status == ImageStatus::Conflict)
         return QBrush(QColor(255, 220, 220));
     if (role == Qt::UserRole)
@@ -76,16 +91,7 @@ QVariant ImageListModel::headerData(int section, Qt::Orientation orientation, in
 {
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole)
         return {};
-    switch (section) {
-    case ThumbnailColumn: return QStringLiteral("缩略图");
-    case FileNameColumn: return QStringLiteral("文件名");
-    case RelativePathColumn: return QStringLiteral("相对路径");
-    case SizeColumn: return QStringLiteral("图片尺寸");
-    case FileSizeColumn: return QStringLiteral("文件大小");
-    case MatchCountColumn: return QStringLiteral("命中规则数量");
-    case StatusColumn: return QStringLiteral("状态");
-    default: return {};
-    }
+    return ImageTableUtils::columnTitle(section);
 }
 
 Qt::ItemFlags ImageListModel::flags(const QModelIndex& index) const
