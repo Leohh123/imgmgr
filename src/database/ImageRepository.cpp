@@ -9,6 +9,11 @@
 #include <QSqlRecord>
 
 namespace {
+struct ImageQuery {
+    QString sql;
+    QVariantList binds;
+};
+
 QString globForSql(const ImageFilter& filter)
 {
     QString pattern = QString(filter.pattern).replace('\\', '/');
@@ -33,17 +38,6 @@ QVector<int> parseRuleIds(const QString& text)
             ids << id;
     }
     return ids;
-}
-
-bool isAncestor(const QHash<int, int>& parentById, int possibleAncestorId, int ruleId)
-{
-    int current = parentById.value(ruleId, 0);
-    while (current != 0) {
-        if (current == possibleAncestorId)
-            return true;
-        current = parentById.value(current, 0);
-    }
-    return false;
 }
 
 QVector<int> descendantRuleIds(QSqlDatabase db, int ruleId)
@@ -119,6 +113,79 @@ ImageRecord imageRecordFromQuery(const QSqlQuery& q)
     r.matchCount = q.value("match_count").toInt();
     return r;
 }
+
+QString imageColumnForTarget(const QString& matchTarget)
+{
+    if (matchTarget == RuleUtils::relativePathTarget()) return QStringLiteral("i.relative_path");
+    if (matchTarget == RuleUtils::absolutePathTarget()) return QStringLiteral("i.absolute_path");
+    if (matchTarget == RuleUtils::parentDirTarget()) return QStringLiteral("i.parent_dir");
+    if (matchTarget == RuleUtils::fileNameTarget()) return QStringLiteral("i.file_name");
+    return QStringLiteral("i.file_stem");
+}
+
+void addPatternFilter(const ImageFilter& filter, QStringList* where, QVariantList* binds)
+{
+    if (filter.pattern.trimmed().isEmpty() || filter.ruleType != RuleUtils::globRuleType())
+        return;
+
+    const QString col = imageColumnForTarget(filter.matchTarget);
+    const QString sqlValue = filter.caseSensitive
+        ? QString("replace(%1, '\\', '/')").arg(col)
+        : QString("lower(replace(%1, '\\', '/'))").arg(col);
+    *where << QString("%1 GLOB ?").arg(sqlValue);
+    *binds << globForSql(filter);
+}
+
+void addCurrentRuleFilter(QSqlDatabase db, const ImageFilter& filter, QStringList* where, QVariantList* binds)
+{
+    if (filter.currentRuleId <= 0)
+        return;
+
+    *where << QStringLiteral("i.id IN (SELECT image_id FROM image_rule_matches WHERE rule_id=?)");
+    *binds << filter.currentRuleId;
+
+    if (!filter.onlyCurrentRule)
+        return;
+
+    const QVector<int> childRuleIds = descendantRuleIds(db, filter.currentRuleId);
+    if (childRuleIds.isEmpty())
+        return;
+
+    QStringList placeholders;
+    placeholders.reserve(childRuleIds.size());
+    for (int i = 0; i < childRuleIds.size(); ++i)
+        placeholders << QStringLiteral("?");
+    *where << QStringLiteral(
+        "i.id NOT IN (SELECT image_id FROM image_rule_matches WHERE rule_id IN (%1))")
+        .arg(placeholders.join(','));
+    for (int childRuleId : childRuleIds)
+        *binds << childRuleId;
+}
+
+ImageQuery buildFetchImagesQuery(QSqlDatabase db, const ImageFilter& filter, int limit)
+{
+    ImageQuery query;
+    query.sql =
+        "SELECT i.*, COUNT(m.rule_id) AS match_count, MAX(COALESCE(m.is_conflict,0)) AS has_conflict, "
+        "GROUP_CONCAT(m.rule_id) AS matched_rule_ids "
+        "FROM images i LEFT JOIN image_rule_matches m ON m.image_id=i.id ";
+
+    QStringList where;
+    addPatternFilter(filter, &where, &query.binds);
+    addCurrentRuleFilter(db, filter, &where, &query.binds);
+
+    if (!where.isEmpty())
+        query.sql += " WHERE " + where.join(" AND ");
+
+    query.sql += " GROUP BY i.id";
+    query.sql += " ORDER BY i.relative_path";
+    if (limit > 0) {
+        query.sql += " LIMIT ?";
+        query.binds << limit;
+    }
+    return query;
+}
+
 }
 
 ImageRepository::ImageRepository(QSqlDatabase db)
@@ -175,60 +242,11 @@ bool ImageRepository::upsertImages(const QVector<ImageRecord>& records)
 QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int limit) const
 {
     const QHash<int, int> parentById = loadRuleParents(m_db);
-
-    QString sql =
-        "SELECT i.*, COUNT(m.rule_id) AS match_count, MAX(COALESCE(m.is_conflict,0)) AS has_conflict, "
-        "GROUP_CONCAT(m.rule_id) AS matched_rule_ids "
-        "FROM images i LEFT JOIN image_rule_matches m ON m.image_id=i.id ";
-    QStringList where;
-    QVariantList binds;
-
-    if (!filter.pattern.trimmed().isEmpty()) {
-        const QString col = filter.matchTarget == RuleUtils::relativePathTarget() ? "i.relative_path"
-            : filter.matchTarget == RuleUtils::absolutePathTarget() ? "i.absolute_path"
-            : filter.matchTarget == RuleUtils::parentDirTarget() ? "i.parent_dir"
-            : filter.matchTarget == RuleUtils::fileNameTarget() ? "i.file_name" : "i.file_stem";
-        if (filter.ruleType == RuleUtils::globRuleType()) {
-            const QString sqlValue = filter.caseSensitive
-                ? QString("replace(%1, '\\', '/')").arg(col)
-                : QString("lower(replace(%1, '\\', '/'))").arg(col);
-            where << QString("%1 GLOB ?").arg(sqlValue);
-            binds << globForSql(filter);
-        }
-    }
-
-    if (filter.currentRuleId > 0) {
-        where << "i.id IN (SELECT image_id FROM image_rule_matches WHERE rule_id=?)";
-        binds << filter.currentRuleId;
-        if (filter.onlyCurrentRule) {
-            const QVector<int> childRuleIds = descendantRuleIds(m_db, filter.currentRuleId);
-            if (!childRuleIds.isEmpty()) {
-                QStringList placeholders;
-                placeholders.reserve(childRuleIds.size());
-                for (int i = 0; i < childRuleIds.size(); ++i)
-                    placeholders << "?";
-                where << QStringLiteral(
-                    "i.id NOT IN (SELECT image_id FROM image_rule_matches WHERE rule_id IN (%1))")
-                    .arg(placeholders.join(','));
-                for (int childRuleId : childRuleIds)
-                    binds << childRuleId;
-            }
-        }
-    }
-
-    if (!where.isEmpty())
-        sql += " WHERE " + where.join(" AND ");
-
-    sql += " GROUP BY i.id";
-    sql += " ORDER BY i.relative_path";
-    if (limit > 0) {
-        sql += " LIMIT ?";
-        binds << limit;
-    }
+    const ImageQuery imageQuery = buildFetchImagesQuery(m_db, filter, limit);
 
     QSqlQuery q(m_db);
-    q.prepare(sql);
-    for (const QVariant& bind : binds)
+    q.prepare(imageQuery.sql);
+    for (const QVariant& bind : imageQuery.binds)
         q.addBindValue(bind);
 
     QVector<ImageRecord> out;
@@ -318,7 +336,7 @@ ImageStatus ImageRepository::statusForMatches(int matchCount, bool hasConflict, 
         for (int j = i + 1; j < matchedRuleIds.size(); ++j) {
             const int a = matchedRuleIds.at(i);
             const int b = matchedRuleIds.at(j);
-            if (!isAncestor(parentById, a, b) && !isAncestor(parentById, b, a))
+            if (!RuleUtils::isAncestorRule(parentById, a, b) && !RuleUtils::isAncestorRule(parentById, b, a))
                 return ImageStatus::MultiMatch;
         }
     }
