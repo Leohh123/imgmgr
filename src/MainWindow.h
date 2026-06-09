@@ -43,8 +43,6 @@ private:
     void setProject(const QString& dbPath);
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
-    QStringList recentProjects() const;
-    void setRecentProjects(const QStringList& projects);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
     bool validateRuleForSave(const RuleRecord& rule);
     bool addRuleAndRecalculate(const RuleRecord& rule);
@@ -53,7 +51,6 @@ private:
     void reloadImages(const ImageFilter& filter = {});
     void updateFilterStatus(qint64 elapsedMs);
     void setupImageColumnMenu();
-    void configureImageTableColumns();
     void updateImageColumnVisibility();
     void setThumbnailBackgroundPreset(const QColor& color, bool checkerboard);
     void applyThumbnailBackgroundColor();

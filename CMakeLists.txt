@@ -42,10 +42,14 @@ qt_add_executable(imgmgr
     src/utils/ImageUtils.cpp
     src/utils/PaintUtils.h
     src/utils/PaintUtils.cpp
+    src/utils/RecentProjectsStore.h
+    src/utils/RecentProjectsStore.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/utils/UiUtils.h
     src/utils/UiUtils.cpp
+    src/utils/ImageTableUtils.h
+    src/utils/ImageTableUtils.cpp
     src/types.h
 )
 

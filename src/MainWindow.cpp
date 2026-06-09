@@ -1,6 +1,8 @@
 #include "MainWindow.h"
 
+#include "utils/ImageTableUtils.h"
 #include "utils/PaintUtils.h"
+#include "utils/RecentProjectsStore.h"
 #include "utils/RuleUtils.h"
 #include "utils/UiUtils.h"
 
@@ -28,11 +30,9 @@
 #include <QPainter>
 #include <QProgressBar>
 #include <QRegularExpression>
-#include <QSettings>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QSqlQuery>
-#include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyledItemDelegate>
 #include <QTableView>
@@ -81,28 +81,6 @@ public:
         painter->drawPixmap(topLeft, pixmap);
     }
 };
-
-static QString imageColumnTitle(int column)
-{
-    switch (column) {
-    case ImageListModel::ThumbnailColumn: return QStringLiteral("缩略图");
-    case ImageListModel::FileNameColumn: return QStringLiteral("文件名");
-    case ImageListModel::RelativePathColumn: return QStringLiteral("相对路径");
-    case ImageListModel::SizeColumn: return QStringLiteral("图片尺寸");
-    case ImageListModel::FileSizeColumn: return QStringLiteral("文件大小");
-    case ImageListModel::MatchCountColumn: return QStringLiteral("命中规则数量");
-    case ImageListModel::StatusColumn: return QStringLiteral("状态");
-    default: return {};
-    }
-}
-
-static bool isDefaultImageColumnVisible(int column)
-{
-    return column == ImageListModel::ThumbnailColumn
-        || column == ImageListModel::FileNameColumn
-        || column == ImageListModel::SizeColumn
-        || column == ImageListModel::StatusColumn;
-}
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -200,9 +178,9 @@ void MainWindow::setupImageColumnMenu()
     auto* imageColumnsMenu = m_viewMenu->addMenu(QStringLiteral("文件列表显示信息"));
 
     for (int column = 0; column < ImageListModel::ColumnCount; ++column) {
-        QAction* action = imageColumnsMenu->addAction(imageColumnTitle(column));
+        QAction* action = imageColumnsMenu->addAction(ImageTableUtils::columnTitle(column));
         action->setCheckable(true);
-        action->setChecked(isDefaultImageColumnVisible(column));
+        action->setChecked(ImageTableUtils::isDefaultColumnVisible(column));
         m_imageColumnActions.insert(column, action);
         connect(action, &QAction::toggled, this, [this](bool) {
             updateImageColumnVisibility();
@@ -211,37 +189,14 @@ void MainWindow::setupImageColumnMenu()
 
 }
 
-void MainWindow::configureImageTableColumns()
-{
-    if (!m_table)
-        return;
-
-    QHeaderView* header = m_table->horizontalHeader();
-    header->setStretchLastSection(false);
-    header->setMinimumSectionSize(24);
-
-    header->setSectionResizeMode(ImageListModel::ThumbnailColumn, QHeaderView::Fixed);
-    m_table->setColumnWidth(ImageListModel::ThumbnailColumn, 128);
-
-    header->setSectionResizeMode(ImageListModel::FileNameColumn, QHeaderView::Stretch);
-
-    header->setSectionResizeMode(ImageListModel::RelativePathColumn, QHeaderView::Interactive);
-    m_table->setColumnWidth(ImageListModel::RelativePathColumn, 220);
-
-    header->setSectionResizeMode(ImageListModel::SizeColumn, QHeaderView::ResizeToContents);
-    header->setSectionResizeMode(ImageListModel::FileSizeColumn, QHeaderView::ResizeToContents);
-    header->setSectionResizeMode(ImageListModel::MatchCountColumn, QHeaderView::ResizeToContents);
-    header->setSectionResizeMode(ImageListModel::StatusColumn, QHeaderView::ResizeToContents);
-}
-
 void MainWindow::updateImageColumnVisibility()
 {
     if (!m_table)
         return;
-    configureImageTableColumns();
+    ImageTableUtils::configureColumns(m_table);
     for (int column = 0; column < ImageListModel::ColumnCount; ++column) {
         QAction* action = m_imageColumnActions.value(column, nullptr);
-        const bool visible = action ? action->isChecked() : isDefaultImageColumnVisible(column);
+        const bool visible = action ? action->isChecked() : ImageTableUtils::isDefaultColumnVisible(column);
         m_table->setColumnHidden(column, !visible);
     }
 }
@@ -313,7 +268,7 @@ void MainWindow::setProject(const QString& dbPath)
 
     m_table->setModel(m_imageModel);
     m_table->setItemDelegateForColumn(ImageListModel::ThumbnailColumn, new ThumbnailDelegate(m_table));
-    configureImageTableColumns();
+    ImageTableUtils::configureColumns(m_table);
     updateImageColumnVisibility();
     reloadImages({});
     m_selectedRule = {};
@@ -425,7 +380,7 @@ void MainWindow::updateRecentProjectsMenu()
     if (!m_recentProjectsMenu)
         return;
     m_recentProjectsMenu->clear();
-    const QStringList projects = recentProjects();
+    const QStringList projects = RecentProjectsStore::projects();
     if (projects.isEmpty()) {
         auto* emptyAction = m_recentProjectsMenu->addAction(QStringLiteral("无最近项目"));
         emptyAction->setEnabled(false);
@@ -439,30 +394,15 @@ void MainWindow::updateRecentProjectsMenu()
     }
     m_recentProjectsMenu->addSeparator();
     m_recentProjectsMenu->addAction(QStringLiteral("清空最近项目"), this, [this] {
-        setRecentProjects({});
+        RecentProjectsStore::setProjects({});
         updateRecentProjectsMenu();
     });
 }
 
 void MainWindow::addRecentProject(const QString& dbPath)
 {
-    QStringList projects = recentProjects();
-    projects.removeAll(dbPath);
-    projects.prepend(dbPath);
-    while (projects.size() > 10)
-        projects.removeLast();
-    setRecentProjects(projects);
+    RecentProjectsStore::addProject(dbPath);
     updateRecentProjectsMenu();
-}
-
-QStringList MainWindow::recentProjects() const
-{
-    return QSettings().value(QStringLiteral("recentProjects")).toStringList();
-}
-
-void MainWindow::setRecentProjects(const QStringList& projects)
-{
-    QSettings().setValue(QStringLiteral("recentProjects"), projects);
 }
 
 void MainWindow::exportRulesToJson()
