@@ -46,6 +46,8 @@ qt_add_executable(imgmgr
     src/utils/PaintUtils.cpp
     src/utils/RecentProjectsStore.h
     src/utils/RecentProjectsStore.cpp
+    src/utils/RuleExplanationBuilder.h
+    src/utils/RuleExplanationBuilder.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/utils/UiUtils.h

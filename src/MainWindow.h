@@ -46,8 +46,6 @@ private:
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
     bool validateRuleForSave(const RuleRecord& rule);
     bool addRuleAndRecalculate(const RuleRecord& rule);
-    QString rulePath(int ruleId, const QHash<int, RuleRecord>& rulesById) const;
-    QString conflictReason(int ruleA, int ruleB, const QHash<int, RuleRecord>& rulesById, const QHash<int, int>& parentById) const;
     void reloadImages(const ImageFilter& filter = {});
     void updateFilterStatus(qint64 elapsedMs);
     void setupImageColumnMenu();
