@@ -5,6 +5,8 @@
 #include <QSqlError>
 #include <QSqlQuery>
 
+#include <algorithm>
+
 namespace {
 RuleRecord ruleFromQuery(const QSqlQuery& q)
 {
@@ -25,6 +27,32 @@ RuleRecord ruleFromQuery(const QSqlQuery& q)
     r.conflictCount = q.value("conflict_count").toInt();
     return r;
 }
+
+void bindNullableParentId(QSqlQuery* query, int parentId)
+{
+    query->addBindValue(parentId == 0 ? QVariant() : parentId);
+}
+
+void bindRuleFields(QSqlQuery* query, const RuleRecord& rule)
+{
+    bindNullableParentId(query, rule.parentId);
+    query->addBindValue(rule.name);
+    query->addBindValue(rule.ruleType);
+    query->addBindValue(rule.pattern);
+    query->addBindValue(rule.matchTarget);
+    query->addBindValue(rule.enabled ? 1 : 0);
+    query->addBindValue(rule.priority);
+    query->addBindValue(rule.allowConflict ? 1 : 0);
+    query->addBindValue(rule.caseSensitive ? 1 : 0);
+    query->addBindValue(rule.wholeMatch ? 1 : 0);
+    query->addBindValue(rule.note);
+}
+
+void bindRuleTimestamps(QSqlQuery* query, qint64 createdAt, qint64 updatedAt)
+{
+    query->addBindValue(createdAt);
+    query->addBindValue(updatedAt);
+}
 }
 
 RuleRepository::RuleRepository(QSqlDatabase db)
@@ -38,19 +66,8 @@ int RuleRepository::addRule(const RuleRecord& rule)
     q.prepare("INSERT INTO rules (parent_id,name,rule_type,pattern,match_target,enabled,priority,allow_conflict,case_sensitive,whole_match,note,created_at,updated_at) "
               "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
     const qint64 now = QDateTime::currentSecsSinceEpoch();
-    q.addBindValue(rule.parentId == 0 ? QVariant() : rule.parentId);
-    q.addBindValue(rule.name);
-    q.addBindValue(rule.ruleType);
-    q.addBindValue(rule.pattern);
-    q.addBindValue(rule.matchTarget);
-    q.addBindValue(rule.enabled ? 1 : 0);
-    q.addBindValue(rule.priority);
-    q.addBindValue(rule.allowConflict ? 1 : 0);
-    q.addBindValue(rule.caseSensitive ? 1 : 0);
-    q.addBindValue(rule.wholeMatch ? 1 : 0);
-    q.addBindValue(rule.note);
-    q.addBindValue(now);
-    q.addBindValue(now);
+    bindRuleFields(&q, rule);
+    bindRuleTimestamps(&q, now, now);
     if (!q.exec()) {
         m_lastError = q.lastError().text();
         return 0;
@@ -62,17 +79,7 @@ bool RuleRepository::updateRule(const RuleRecord& rule)
 {
     QSqlQuery q(m_db);
     q.prepare("UPDATE rules SET parent_id=?,name=?,rule_type=?,pattern=?,match_target=?,enabled=?,priority=?,allow_conflict=?,case_sensitive=?,whole_match=?,note=?,updated_at=? WHERE id=?");
-    q.addBindValue(rule.parentId == 0 ? QVariant() : rule.parentId);
-    q.addBindValue(rule.name);
-    q.addBindValue(rule.ruleType);
-    q.addBindValue(rule.pattern);
-    q.addBindValue(rule.matchTarget);
-    q.addBindValue(rule.enabled ? 1 : 0);
-    q.addBindValue(rule.priority);
-    q.addBindValue(rule.allowConflict ? 1 : 0);
-    q.addBindValue(rule.caseSensitive ? 1 : 0);
-    q.addBindValue(rule.wholeMatch ? 1 : 0);
-    q.addBindValue(rule.note);
+    bindRuleFields(&q, rule);
     q.addBindValue(QDateTime::currentSecsSinceEpoch());
     q.addBindValue(rule.id);
     if (!q.exec()) {
@@ -109,19 +116,8 @@ bool RuleRepository::replaceRules(const QVector<RuleRecord>& rules)
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     for (const RuleRecord& rule : rules) {
         insert.addBindValue(rule.id);
-        insert.addBindValue(rule.parentId == 0 ? QVariant() : rule.parentId);
-        insert.addBindValue(rule.name);
-        insert.addBindValue(rule.ruleType);
-        insert.addBindValue(rule.pattern);
-        insert.addBindValue(rule.matchTarget);
-        insert.addBindValue(rule.enabled ? 1 : 0);
-        insert.addBindValue(rule.priority);
-        insert.addBindValue(rule.allowConflict ? 1 : 0);
-        insert.addBindValue(rule.caseSensitive ? 1 : 0);
-        insert.addBindValue(rule.wholeMatch ? 1 : 0);
-        insert.addBindValue(rule.note);
-        insert.addBindValue(now);
-        insert.addBindValue(now);
+        bindRuleFields(&insert, rule);
+        bindRuleTimestamps(&insert, now, now);
         if (!insert.exec()) {
             m_lastError = insert.lastError().text();
             m_db.rollback();
@@ -151,7 +147,8 @@ bool RuleRepository::removeRule(int id)
 bool RuleRepository::removeRuleRecursive(int id)
 {
     QVector<int> ids = childRuleIdsRecursive(id);
-    ids.prepend(id);
+    std::reverse(ids.begin(), ids.end());
+    ids.append(id);
     if (!m_db.transaction()) {
         m_lastError = m_db.lastError().text();
         return false;
