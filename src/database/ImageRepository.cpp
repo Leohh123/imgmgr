@@ -1,6 +1,7 @@
 #include "database/ImageRepository.h"
 
 #include <QHash>
+#include <QQueue>
 #include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -79,6 +80,28 @@ bool isAncestor(const QHash<int, int>& parentById, int possibleAncestorId, int r
         current = parentById.value(current, 0);
     }
     return false;
+}
+
+QVector<int> descendantRuleIds(QSqlDatabase db, int ruleId)
+{
+    QVector<int> ids;
+    QQueue<int> queue;
+    queue.enqueue(ruleId);
+
+    while (!queue.isEmpty()) {
+        const int parentId = queue.dequeue();
+        QSqlQuery q(db);
+        q.prepare("SELECT id FROM rules WHERE parent_id=?");
+        q.addBindValue(parentId);
+        if (!q.exec())
+            continue;
+        while (q.next()) {
+            const int childId = q.value(0).toInt();
+            ids << childId;
+            queue.enqueue(childId);
+        }
+    }
+    return ids;
 }
 
 bool statusAllowed(const ImageFilter& filter, ImageStatus status)
@@ -185,6 +208,20 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
     if (filter.currentRuleId > 0) {
         where << "i.id IN (SELECT image_id FROM image_rule_matches WHERE rule_id=?)";
         binds << filter.currentRuleId;
+        if (filter.onlyCurrentRule) {
+            const QVector<int> childRuleIds = descendantRuleIds(m_db, filter.currentRuleId);
+            if (!childRuleIds.isEmpty()) {
+                QStringList placeholders;
+                placeholders.reserve(childRuleIds.size());
+                for (int i = 0; i < childRuleIds.size(); ++i)
+                    placeholders << "?";
+                where << QStringLiteral(
+                    "i.id NOT IN (SELECT image_id FROM image_rule_matches WHERE rule_id IN (%1))")
+                    .arg(placeholders.join(','));
+                for (int childRuleId : childRuleIds)
+                    binds << childRuleId;
+            }
+        }
     }
 
     if (!where.isEmpty())

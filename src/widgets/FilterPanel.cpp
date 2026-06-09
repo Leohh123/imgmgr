@@ -32,6 +32,8 @@ FilterPanel::FilterPanel(QWidget* parent)
     m_unclassified = new QCheckBox(QStringLiteral("未分类"), this);
     m_conflict = new QCheckBox(QStringLiteral("冲突"), this);
     m_multi = new QCheckBox(QStringLiteral("多重命中"), this);
+    m_onlyCurrentRule = new QCheckBox(QStringLiteral("仅当前规则"), this);
+    m_onlyCurrentRule->setEnabled(false);
     setStatusFiltersChecked(true);
     auto* typeLayout = new QHBoxLayout;
     typeLayout->addWidget(m_globType);
@@ -41,15 +43,19 @@ FilterPanel::FilterPanel(QWidget* parent)
     typeLayout->addSpacing(8);
     typeLayout->addWidget(m_caseSensitive);
     typeLayout->addWidget(m_wholeMatch);
-    typeLayout->addSpacing(8);
-    typeLayout->addWidget(statusSeparator);
-    typeLayout->addSpacing(8);
-    typeLayout->addWidget(m_statusToggleButton);
-    typeLayout->addWidget(m_classified);
-    typeLayout->addWidget(m_unclassified);
-    typeLayout->addWidget(m_conflict);
-    typeLayout->addWidget(m_multi);
     typeLayout->addStretch();
+
+    auto* statusLayout = new QHBoxLayout;
+    statusLayout->addWidget(m_statusToggleButton);
+    statusLayout->addWidget(m_classified);
+    statusLayout->addWidget(m_unclassified);
+    statusLayout->addWidget(m_conflict);
+    statusLayout->addWidget(m_multi);
+    statusLayout->addSpacing(8);
+    statusLayout->addWidget(statusSeparator);
+    statusLayout->addSpacing(8);
+    statusLayout->addWidget(m_onlyCurrentRule);
+    statusLayout->addStretch();
 
     m_target = new QComboBox(this);
     m_target->addItem(QStringLiteral("文件名（无后缀）"), "filename_stem");
@@ -65,6 +71,7 @@ FilterPanel::FilterPanel(QWidget* parent)
 
     auto* form = new QFormLayout;
     form->addRow(QStringLiteral("规则类型"), typeLayout);
+    form->addRow(QStringLiteral("状态筛选"), statusLayout);
     form->addRow(QStringLiteral("匹配目标"), m_target);
     form->addRow(QStringLiteral("规则名称"), m_ruleName);
     form->addRow(QStringLiteral("规则内容"), m_pattern);
@@ -107,6 +114,7 @@ FilterPanel::FilterPanel(QWidget* parent)
     connect(m_unclassified, &QCheckBox::clicked, this, filterOnStatusClick);
     connect(m_conflict, &QCheckBox::clicked, this, filterOnStatusClick);
     connect(m_multi, &QCheckBox::clicked, this, filterOnStatusClick);
+    connect(m_onlyCurrentRule, &QCheckBox::clicked, this, filterOnStatusClick);
     connect(m_statusToggleButton, &QPushButton::clicked, this, [this] {
         const bool allChecked = m_classified->isChecked()
             && m_unclassified->isChecked()
@@ -146,6 +154,7 @@ ImageFilter FilterPanel::filter() const
     f.onlyConflict = m_conflict->isChecked();
     f.onlyMultiMatch = m_multi->isChecked();
     f.currentRuleId = m_currentRuleId;
+    f.onlyCurrentRule = m_onlyCurrentRule->isChecked();
     f.caseSensitive = m_caseSensitive->isChecked();
     f.wholeMatch = m_wholeMatch->isChecked();
     return f;
@@ -172,6 +181,8 @@ void FilterPanel::setChildRuleEnabled(bool enabled)
 {
     if (m_addChildButton)
         m_addChildButton->setEnabled(enabled);
+    if (m_onlyCurrentRule)
+        m_onlyCurrentRule->setEnabled(enabled);
 }
 
 QString FilterPanel::ruleType() const

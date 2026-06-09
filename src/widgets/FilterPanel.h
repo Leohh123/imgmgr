@@ -42,6 +42,7 @@ private:
     QCheckBox* m_unclassified = nullptr;
     QCheckBox* m_conflict = nullptr;
     QCheckBox* m_multi = nullptr;
+    QCheckBox* m_onlyCurrentRule = nullptr;
     QCheckBox* m_caseSensitive = nullptr;
     QCheckBox* m_wholeMatch = nullptr;
     int m_currentRuleId = 0;
