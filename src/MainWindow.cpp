@@ -130,7 +130,6 @@ static QJsonObject ruleToJson(const RuleRecord& rule)
 {
     QJsonObject object;
     object.insert(QStringLiteral("id"), rule.id);
-    object.insert(QStringLiteral("parent_id"), rule.parentId);
     object.insert(QStringLiteral("name"), rule.name);
     object.insert(QStringLiteral("rule_type"), rule.ruleType);
     object.insert(QStringLiteral("pattern"), rule.pattern);
@@ -144,7 +143,18 @@ static QJsonObject ruleToJson(const RuleRecord& rule)
     return object;
 }
 
-static bool jsonToRule(const QJsonObject& object, RuleRecord* rule, QString* error)
+static QJsonObject ruleTreeToJson(const RuleRecord& rule, const QHash<int, QVector<RuleRecord>>& childrenByParent)
+{
+    QJsonObject object = ruleToJson(rule);
+    QJsonArray children;
+    const QVector<RuleRecord> childRules = childrenByParent.value(rule.id);
+    for (const RuleRecord& child : childRules)
+        children.append(ruleTreeToJson(child, childrenByParent));
+    object.insert(QStringLiteral("children"), children);
+    return object;
+}
+
+static bool jsonToRule(const QJsonObject& object, int parentId, RuleRecord* rule, QString* error)
 {
     const QStringList required = {
         QStringLiteral("id"),
@@ -163,7 +173,7 @@ static bool jsonToRule(const QJsonObject& object, RuleRecord* rule, QString* err
 
     RuleRecord result;
     result.id = object.value(QStringLiteral("id")).toInt();
-    result.parentId = object.value(QStringLiteral("parent_id")).toInt();
+    result.parentId = parentId;
     result.name = object.value(QStringLiteral("name")).toString().trimmed();
     result.ruleType = object.value(QStringLiteral("rule_type")).toString();
     result.pattern = object.value(QStringLiteral("pattern")).toString().trimmed();
@@ -212,6 +222,35 @@ static bool jsonToRule(const QJsonObject& object, RuleRecord* rule, QString* err
     }
 
     *rule = result;
+    return true;
+}
+
+static bool appendRulesFromJsonTree(const QJsonArray& array, int parentId, QVector<RuleRecord>* rules, QString* error)
+{
+    for (const QJsonValue& value : array) {
+        if (!value.isObject()) {
+            if (error)
+                *error = QStringLiteral("rules/children 数组中存在非对象元素。");
+            return false;
+        }
+
+        const QJsonObject object = value.toObject();
+        RuleRecord rule;
+        if (!jsonToRule(object, parentId, &rule, error))
+            return false;
+        rules->append(rule);
+
+        const QJsonValue childrenValue = object.value(QStringLiteral("children"));
+        if (!childrenValue.isUndefined()) {
+            if (!childrenValue.isArray()) {
+                if (error)
+                    *error = QStringLiteral("规则“%1”的 children 必须是数组。").arg(rule.name);
+                return false;
+            }
+            if (!appendRulesFromJsonTree(childrenValue.toArray(), rule.id, rules, error))
+                return false;
+        }
+    }
     return true;
 }
 
@@ -643,12 +682,15 @@ void MainWindow::exportRulesToJson()
 
     QJsonArray ruleArray;
     const QVector<RuleRecord> rules = m_rules.fetchRules(false);
+    QHash<int, QVector<RuleRecord>> childrenByParent;
     for (const RuleRecord& rule : rules)
-        ruleArray.append(ruleToJson(rule));
+        childrenByParent[rule.parentId].append(rule);
+    for (const RuleRecord& rule : childrenByParent.value(0))
+        ruleArray.append(ruleTreeToJson(rule, childrenByParent));
 
     QJsonObject root;
     root.insert(QStringLiteral("format"), QStringLiteral("imgmgr.rules"));
-    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("version"), 2);
     root.insert(QStringLiteral("rules"), ruleArray);
 
     QFile file(path);
@@ -702,23 +744,13 @@ void MainWindow::importRulesFromJson()
         return;
     }
 
+    QString error;
     QVector<RuleRecord> rules;
-    rules.reserve(ruleArray.size());
-    for (const QJsonValue& value : ruleArray) {
-        if (!value.isObject()) {
-            QMessageBox::critical(this, QStringLiteral("导入失败"), QStringLiteral("rules 数组中存在非对象元素。"));
-            return;
-        }
-        RuleRecord rule;
-        QString error;
-        if (!jsonToRule(value.toObject(), &rule, &error)) {
-            QMessageBox::critical(this, QStringLiteral("导入失败"), error);
-            return;
-        }
-        rules << rule;
+    if (!appendRulesFromJsonTree(ruleArray, 0, &rules, &error)) {
+        QMessageBox::critical(this, QStringLiteral("导入失败"), error);
+        return;
     }
 
-    QString error;
     if (!validateImportedRules(rules, &error)) {
         QMessageBox::critical(this, QStringLiteral("导入失败"), error);
         return;
