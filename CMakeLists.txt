@@ -30,6 +30,8 @@ qt_add_executable(imgmgr
     src/services/ThumbnailCache.cpp
     src/services/RuleEngine.h
     src/services/RuleEngine.cpp
+    src/services/ProjectStatsService.h
+    src/services/ProjectStatsService.cpp
     src/widgets/ImagePreviewWidget.h
     src/widgets/ImagePreviewWidget.cpp
     src/widgets/FilterPanel.h

@@ -6,6 +6,7 @@
 #include "utils/RuleExplanationBuilder.h"
 #include "utils/RuleUtils.h"
 #include "utils/UiUtils.h"
+#include "services/ProjectStatsService.h"
 #include "widgets/RuleEditDialog.h"
 
 #include <QAction>
@@ -28,7 +29,6 @@
 #include <QProgressBar>
 #include <QRegularExpression>
 #include <QSplitter>
-#include <QSqlQuery>
 #include <QStatusBar>
 #include <QStyledItemDelegate>
 #include <QTableView>
@@ -670,32 +670,5 @@ void MainWindow::refreshStats()
 {
     if (!m_database.db().isOpen())
         return;
-    QSqlQuery q(m_database.db());
-    auto scalar = [&q](const QString& sql) {
-        q.exec(sql);
-        return q.next() ? q.value(0).toInt() : 0;
-    };
-    const QVector<ImageRecord> images = m_images.fetchAllImages();
-    const int total = images.size();
-    int classified = 0;
-    int unclassified = 0;
-    int conflicts = 0;
-    int multiMatch = 0;
-    for (const ImageRecord& image : images) {
-        if (image.status == ImageStatus::Classified)
-            ++classified;
-        else if (image.status == ImageStatus::Unclassified)
-            ++unclassified;
-        else if (image.status == ImageStatus::Conflict)
-            ++conflicts;
-        else if (image.status == ImageStatus::MultiMatch)
-            ++multiMatch;
-    }
-    const int rules = scalar("SELECT COUNT(*) FROM rules");
-    const int enabled = scalar("SELECT COUNT(*) FROM rules WHERE enabled=1");
-    const int transparent = scalar("SELECT COUNT(*) FROM images WHERE has_alpha=1");
-    m_stats->setText(QStringLiteral(
-        "总图片数：%1\n已分类图片数：%2\n未分类图片数：%3\n冲突图片数：%4\n多重命中图片数：%5\n规则数量：%6\n启用规则数量：%7\n禁用规则数量：%8\n透明图片数量：%9\n不透明图片数量：%10")
-        .arg(total).arg(classified).arg(unclassified).arg(conflicts).arg(multiMatch)
-        .arg(rules).arg(enabled).arg(rules - enabled).arg(transparent).arg(total - transparent));
+    m_stats->setText(ProjectStatsService::buildStatsText(m_database.db(), m_images));
 }
