@@ -247,21 +247,44 @@ void MainWindow::setProject(const QString& dbPath)
     m_images.setDatabase(m_database.db());
     m_rules.setDatabase(m_database.db());
 
+    resetProjectComponents();
+    createProjectComponents();
+    bindProjectModels();
+    connectProjectSignals();
+
+    setWindowTitle(QStringLiteral("imgmgr - %1").arg(QDir::toNativeSeparators(dbPath)));
+    addRecentProject(dbPath);
+    refreshStats();
+}
+
+void MainWindow::resetProjectComponents()
+{
     delete m_rulePanel;
     m_rulePanel = nullptr;
     delete m_thumbnails;
+    m_thumbnails = nullptr;
     delete m_imageModel;
+    m_imageModel = nullptr;
     delete m_ruleModel;
+    m_ruleModel = nullptr;
     delete m_scanner;
+    m_scanner = nullptr;
     delete m_ruleEngine;
+    m_ruleEngine = nullptr;
+}
 
+void MainWindow::createProjectComponents()
+{
     m_thumbnails = new ThumbnailCache(&m_images, this);
     m_thumbnails->setCacheDir(QDir(m_projectDir).filePath(".project_cache/thumbnails"));
     m_imageModel = new ImageListModel(&m_images, m_thumbnails, this);
     m_ruleModel = new RuleTreeModel(&m_rules, this);
     m_scanner = new ProjectScanner(&m_images, this);
     m_ruleEngine = new RuleEngine(&m_images, &m_rules, this);
+}
 
+void MainWindow::bindProjectModels()
+{
     m_table->setModel(m_imageModel);
     m_table->setItemDelegateForColumn(ImageListModel::ThumbnailColumn, new ThumbnailDelegate(m_table));
     ImageTableUtils::configureColumns(m_table);
@@ -277,8 +300,18 @@ void MainWindow::setProject(const QString& dbPath)
         tabs->insertTab(1, m_rulePanel, QStringLiteral("规则树"));
     }
     m_rulePanel->reload();
+}
 
+void MainWindow::connectProjectSignals()
+{
     connect(m_table->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::showImage);
+    connectRulePanelSignals();
+    connectScannerSignals();
+    connectRuleEngineSignals();
+}
+
+void MainWindow::connectRulePanelSignals()
+{
     connect(m_rulePanel, &RulePanel::ruleSelected, this, [this](const RuleRecord& rule) {
         m_selectedRule = rule;
         m_filter->setChildRuleEnabled(rule.id > 0);
@@ -326,6 +359,10 @@ void MainWindow::setProject(const QString& dbPath)
         }
         recalculateRules();
     });
+}
+
+void MainWindow::connectScannerSignals()
+{
     connect(m_scanner, &ProjectScanner::progress, this, [this](int current, int total, const QString& path) {
         m_progress->setVisible(true);
         if (total <= 0) {
@@ -348,6 +385,10 @@ void MainWindow::setProject(const QString& dbPath)
         m_progress->setVisible(false);
         QMessageBox::critical(this, QStringLiteral("扫描失败"), error);
     });
+}
+
+void MainWindow::connectRuleEngineSignals()
+{
     connect(m_ruleEngine, &RuleEngine::progress, this, [this](int current, int total) {
         m_progress->setVisible(true);
         m_progress->setRange(0, total);
@@ -365,10 +406,6 @@ void MainWindow::setProject(const QString& dbPath)
         m_progress->setVisible(false);
         QMessageBox::critical(this, QStringLiteral("规则重算失败"), error);
     });
-
-    setWindowTitle(QStringLiteral("imgmgr - %1").arg(QDir::toNativeSeparators(dbPath)));
-    addRecentProject(dbPath);
-    refreshStats();
 }
 
 void MainWindow::updateRecentProjectsMenu()

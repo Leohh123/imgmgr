@@ -41,6 +41,13 @@ private slots:
 private:
     void buildUi();
     void setProject(const QString& dbPath);
+    void resetProjectComponents();
+    void createProjectComponents();
+    void bindProjectModels();
+    void connectProjectSignals();
+    void connectRulePanelSignals();
+    void connectScannerSignals();
+    void connectRuleEngineSignals();
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
