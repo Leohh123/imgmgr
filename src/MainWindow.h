@@ -59,7 +59,6 @@ private:
     void updateImageColumnVisibility();
     void setThumbnailBackgroundPreset(const QColor& color, bool checkerboard);
     void applyThumbnailBackgroundColor();
-    bool projectWritesWouldTouchResourceDir(const QString& resourceDir) const;
     void refreshStats();
     void showImage(const QModelIndex& current);
 

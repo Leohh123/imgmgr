@@ -6,6 +6,7 @@
 #include "utils/RuleExplanationBuilder.h"
 #include "utils/RuleUtils.h"
 #include "utils/UiUtils.h"
+#include "services/ProjectPathService.h"
 #include "services/ProjectStatsService.h"
 #include "services/RuleJsonService.h"
 #include "services/RuleValidationService.h"
@@ -585,7 +586,7 @@ void MainWindow::scanResourceDirectory()
     const QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择资源目录"));
     if (dir.isEmpty())
         return;
-    if (projectWritesWouldTouchResourceDir(dir)) {
+    if (ProjectPathService::projectWritesWouldTouchResourceDir(m_projectDir, dir)) {
         QMessageBox::warning(this,
             QStringLiteral("项目目录不能位于资源目录内"),
             QStringLiteral("为保证资源目录完全只读，项目数据库和 .project_cache 缩略图缓存必须保存在资源目录之外。\n\n请把项目 .db 文件放到其他目录后再扫描。"));
@@ -595,19 +596,6 @@ void MainWindow::scanResourceDirectory()
     m_progress->setRange(0, 0);
     m_status->setText(QStringLiteral("准备扫描：%1").arg(dir));
     m_scanner->scan(dir);
-}
-
-bool MainWindow::projectWritesWouldTouchResourceDir(const QString& resourceDir) const
-{
-    const QString resourcePath = QDir(resourceDir).canonicalPath();
-    const QString projectPath = QDir(m_projectDir).canonicalPath();
-    if (resourcePath.isEmpty() || projectPath.isEmpty())
-        return false;
-
-    const QString normalizedResource = QDir::cleanPath(resourcePath).toLower();
-    const QString normalizedProject = QDir::cleanPath(projectPath).toLower();
-    return normalizedProject == normalizedResource
-        || normalizedProject.startsWith(normalizedResource + QLatin1Char('/'));
 }
 
 void MainWindow::saveRule(const RuleRecord& input)
