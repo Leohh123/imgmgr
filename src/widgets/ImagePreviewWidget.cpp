@@ -2,6 +2,7 @@
 
 #include "utils/ImageUtils.h"
 #include "utils/PaintUtils.h"
+#include "utils/UiUtils.h"
 
 #include <QApplication>
 #include <QButtonGroup>
@@ -13,32 +14,10 @@
 #include <QPalette>
 #include <QPaintEvent>
 #include <QPushButton>
-#include <QRadioButton>
 #include <QScrollArea>
 #include <QScrollBar>
-#include <QFrame>
 #include <QVBoxLayout>
 #include <QResizeEvent>
-
-namespace {
-void addBackgroundRadio(QHBoxLayout* layout, QButtonGroup* group, QWidget* parent, const QString& text, int id, bool checked = false)
-{
-    auto* button = new QRadioButton(text, parent);
-    button->setChecked(checked);
-    group->addButton(button, id);
-    layout->addWidget(button);
-}
-
-void addVerticalSeparator(QHBoxLayout* layout, QWidget* parent)
-{
-    auto* separator = new QFrame(parent);
-    separator->setFrameShape(QFrame::VLine);
-    separator->setFrameShadow(QFrame::Sunken);
-    layout->addSpacing(6);
-    layout->addWidget(separator);
-    layout->addSpacing(6);
-}
-}
 
 class PreviewBackgroundViewport : public QWidget {
 public:
@@ -168,14 +147,10 @@ void ImagePreviewWidget::buildLayout()
     tools->addWidget(m_actualSizeButton);
     tools->addWidget(m_zoomInButton);
     tools->addWidget(m_zoomOutButton);
-    addVerticalSeparator(tools, this);
-    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("棋盘格"), 0, true);
-    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("系统"), 1);
-    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("黑色"), 2);
-    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("白色"), 3);
-    addBackgroundRadio(tools, m_backgroundGroup, this, QStringLiteral("灰色"), 4);
+    UiUtils::addVerticalSeparator(tools, this);
+    UiUtils::addBackgroundPresetRadios(tools, m_backgroundGroup, this);
     tools->addStretch();
-    addVerticalSeparator(tools, this);
+    UiUtils::addVerticalSeparator(tools, this);
     tools->addWidget(m_r);
     tools->addWidget(m_g);
     tools->addWidget(m_b);
@@ -210,14 +185,8 @@ void ImagePreviewWidget::connectControls()
         refresh();
     });
     connect(m_backgroundGroup, &QButtonGroup::idClicked, this, [this](int id) {
-        switch (id) {
-        case 0: setBackgroundPreset(QApplication::palette().color(QPalette::Highlight), true); break;
-        case 1: setBackgroundPreset(QApplication::palette().color(QPalette::Highlight), false); break;
-        case 2: setBackgroundPreset(QColor(Qt::black), false); break;
-        case 3: setBackgroundPreset(QColor(Qt::white), false); break;
-        case 4: setBackgroundPreset(QColor(Qt::gray), false); break;
-        default: break;
-        }
+        const UiUtils::BackgroundPreset preset = UiUtils::backgroundPresetForId(id);
+        setBackgroundPreset(preset.color, preset.checkerboard);
     });
     connect(m_imageLabel, &PreviewImageLabel::pixelHovered, this, &ImagePreviewWidget::updatePixelInfo);
     connect(m_imageLabel, &PreviewImageLabel::dragDelta, this, [this](const QPoint& delta) {

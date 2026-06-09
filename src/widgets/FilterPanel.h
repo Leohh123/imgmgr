@@ -26,6 +26,9 @@ signals:
     void addChildRuleRequested(const RuleRecord& rule);
 
 private:
+    void createControls();
+    void buildLayout();
+    void connectControls();
     QString ruleType() const;
     RuleRecord ruleFromInputs() const;
     void setStatusFiltersChecked(bool checked);
@@ -36,6 +39,9 @@ private:
     QComboBox* m_target = nullptr;
     QLineEdit* m_ruleName = nullptr;
     QLineEdit* m_pattern = nullptr;
+    QPushButton* m_filterButton = nullptr;
+    QPushButton* m_clearButton = nullptr;
+    QPushButton* m_addTopButton = nullptr;
     QPushButton* m_addChildButton = nullptr;
     QPushButton* m_statusToggleButton = nullptr;
     QCheckBox* m_classified = nullptr;

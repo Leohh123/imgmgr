@@ -2,6 +2,7 @@
 
 #include "utils/PaintUtils.h"
 #include "utils/RuleUtils.h"
+#include "utils/UiUtils.h"
 
 #include <QAction>
 #include <QApplication>
@@ -26,7 +27,6 @@
 #include <QElapsedTimer>
 #include <QPainter>
 #include <QProgressBar>
-#include <QRadioButton>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSplitter>
@@ -104,14 +104,6 @@ static bool isDefaultImageColumnVisible(int column)
         || column == ImageListModel::StatusColumn;
 }
 
-static void addBackgroundRadio(QHBoxLayout* layout, QButtonGroup* group, QWidget* parent, const QString& text, int id, bool checked = false)
-{
-    auto* button = new QRadioButton(text, parent);
-    button->setChecked(checked);
-    group->addButton(button, id);
-    layout->addWidget(button);
-}
-
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -142,11 +134,7 @@ void MainWindow::buildUi()
     auto* listBackgroundLayout = new QHBoxLayout;
     listBackgroundLayout->addWidget(new QLabel(QStringLiteral("图片列表背景"), left));
     auto* listBackgroundGroup = new QButtonGroup(left);
-    addBackgroundRadio(listBackgroundLayout, listBackgroundGroup, left, QStringLiteral("棋盘格"), 0, true);
-    addBackgroundRadio(listBackgroundLayout, listBackgroundGroup, left, QStringLiteral("系统"), 1);
-    addBackgroundRadio(listBackgroundLayout, listBackgroundGroup, left, QStringLiteral("黑色"), 2);
-    addBackgroundRadio(listBackgroundLayout, listBackgroundGroup, left, QStringLiteral("白色"), 3);
-    addBackgroundRadio(listBackgroundLayout, listBackgroundGroup, left, QStringLiteral("灰色"), 4);
+    UiUtils::addBackgroundPresetRadios(listBackgroundLayout, listBackgroundGroup, left);
     listBackgroundLayout->addStretch();
     leftLayout->addLayout(listBackgroundLayout);
 
@@ -201,14 +189,8 @@ void MainWindow::buildUi()
     connect(m_filter, &FilterPanel::addTopRuleRequested, this, &MainWindow::saveRule);
     connect(m_filter, &FilterPanel::addChildRuleRequested, this, &MainWindow::saveChildRule);
     connect(listBackgroundGroup, &QButtonGroup::idClicked, this, [this](int id) {
-        switch (id) {
-        case 0: setThumbnailBackgroundPreset(QApplication::palette().color(QPalette::Highlight), true); break;
-        case 1: setThumbnailBackgroundPreset(QApplication::palette().color(QPalette::Highlight), false); break;
-        case 2: setThumbnailBackgroundPreset(QColor(Qt::black), false); break;
-        case 3: setThumbnailBackgroundPreset(QColor(Qt::white), false); break;
-        case 4: setThumbnailBackgroundPreset(QColor(Qt::gray), false); break;
-        default: break;
-        }
+        const UiUtils::BackgroundPreset preset = UiUtils::backgroundPresetForId(id);
+        setThumbnailBackgroundPreset(preset.color, preset.checkerboard);
     });
 }
 
@@ -646,11 +628,7 @@ bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
         type->setCurrentIndex(0);
 
     auto* target = new QComboBox(&dialog);
-    target->addItem(QStringLiteral("文件名（无后缀）"), RuleUtils::fileNameStemTarget());
-    target->addItem(QStringLiteral("文件名（有后缀）"), RuleUtils::fileNameTarget());
-    target->addItem(QStringLiteral("相对路径"), RuleUtils::relativePathTarget());
-    target->addItem(QStringLiteral("完整路径"), RuleUtils::absolutePathTarget());
-    target->addItem(QStringLiteral("父目录"), RuleUtils::parentDirTarget());
+    UiUtils::populateMatchTargetCombo(target);
     target->setCurrentIndex(target->findData(rule.matchTarget));
     if (target->currentIndex() < 0)
         target->setCurrentIndex(0);

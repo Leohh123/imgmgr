@@ -44,6 +44,8 @@ qt_add_executable(imgmgr
     src/utils/PaintUtils.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
+    src/utils/UiUtils.h
+    src/utils/UiUtils.cpp
     src/types.h
 )
 

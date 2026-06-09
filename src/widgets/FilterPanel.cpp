@@ -1,11 +1,11 @@
 #include "widgets/FilterPanel.h"
 
 #include "utils/RuleUtils.h"
+#include "utils/UiUtils.h"
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFormLayout>
-#include <QFrame>
 #include <QHBoxLayout>
 #include <QLineEdit>
 #include <QPushButton>
@@ -16,18 +16,19 @@
 FilterPanel::FilterPanel(QWidget* parent)
     : QWidget(parent)
 {
+    createControls();
+    buildLayout();
+    connectControls();
+}
+
+void FilterPanel::createControls()
+{
     m_globType = new QRadioButton(QStringLiteral("通配符"), this);
     m_regexType = new QRadioButton(QStringLiteral("正则表达式"), this);
     m_globType->setChecked(true);
     m_caseSensitive = new QCheckBox(QStringLiteral("区分大小写"), this);
     m_wholeMatch = new QCheckBox(QStringLiteral("全字匹配"), this);
     m_wholeMatch->setChecked(true);
-    auto* typeSeparator = new QFrame(this);
-    typeSeparator->setFrameShape(QFrame::VLine);
-    typeSeparator->setFrameShadow(QFrame::Sunken);
-    auto* statusSeparator = new QFrame(this);
-    statusSeparator->setFrameShape(QFrame::VLine);
-    statusSeparator->setFrameShadow(QFrame::Sunken);
     m_statusToggleButton = new QPushButton(QStringLiteral("全选"), this);
     m_statusToggleButton->setFixedWidth(56);
     m_classified = new QCheckBox(QStringLiteral("已分类"), this);
@@ -37,12 +38,29 @@ FilterPanel::FilterPanel(QWidget* parent)
     m_onlyCurrentRule = new QCheckBox(QStringLiteral("仅当前规则"), this);
     m_onlyCurrentRule->setEnabled(false);
     setStatusFiltersChecked(true);
+
+    m_target = new QComboBox(this);
+    UiUtils::populateMatchTargetCombo(m_target);
+
+    m_ruleName = new QLineEdit(this);
+    m_ruleName->setPlaceholderText(QStringLiteral("例如：按钮"));
+    m_pattern = new QLineEdit(this);
+    m_pattern->setPlaceholderText(QStringLiteral("btn_*.png 或 btn_\\w+\\.png"));
+
+    m_filterButton = new QPushButton(QStringLiteral("筛选"), this);
+    m_clearButton = new QPushButton(QStringLiteral("清空筛选"), this);
+    m_addTopButton = new QPushButton(QStringLiteral("新增顶层规则"), this);
+    m_addChildButton = new QPushButton(QStringLiteral("新增子规则"), this);
+    m_addChildButton->setEnabled(false);
+}
+
+void FilterPanel::buildLayout()
+{
+    auto* form = new QFormLayout;
     auto* typeLayout = new QHBoxLayout;
     typeLayout->addWidget(m_globType);
     typeLayout->addWidget(m_regexType);
-    typeLayout->addSpacing(8);
-    typeLayout->addWidget(typeSeparator);
-    typeLayout->addSpacing(8);
+    UiUtils::addVerticalSeparator(typeLayout, this, 8);
     typeLayout->addWidget(m_caseSensitive);
     typeLayout->addWidget(m_wholeMatch);
     typeLayout->addStretch();
@@ -53,47 +71,29 @@ FilterPanel::FilterPanel(QWidget* parent)
     statusLayout->addWidget(m_unclassified);
     statusLayout->addWidget(m_conflict);
     statusLayout->addWidget(m_multi);
-    statusLayout->addSpacing(8);
-    statusLayout->addWidget(statusSeparator);
-    statusLayout->addSpacing(8);
+    UiUtils::addVerticalSeparator(statusLayout, this, 8);
     statusLayout->addWidget(m_onlyCurrentRule);
     statusLayout->addStretch();
 
-    m_target = new QComboBox(this);
-    m_target->addItem(QStringLiteral("文件名（无后缀）"), RuleUtils::fileNameStemTarget());
-    m_target->addItem(QStringLiteral("文件名（有后缀）"), RuleUtils::fileNameTarget());
-    m_target->addItem(QStringLiteral("相对路径"), RuleUtils::relativePathTarget());
-    m_target->addItem(QStringLiteral("完整路径"), RuleUtils::absolutePathTarget());
-    m_target->addItem(QStringLiteral("父目录"), RuleUtils::parentDirTarget());
-
-    m_ruleName = new QLineEdit(this);
-    m_ruleName->setPlaceholderText(QStringLiteral("例如：按钮"));
-    m_pattern = new QLineEdit(this);
-    m_pattern->setPlaceholderText(QStringLiteral("btn_*.png 或 btn_\\w+\\.png"));
-
-    auto* form = new QFormLayout;
     form->addRow(QStringLiteral("规则类型"), typeLayout);
     form->addRow(QStringLiteral("状态筛选"), statusLayout);
     form->addRow(QStringLiteral("匹配目标"), m_target);
     form->addRow(QStringLiteral("规则名称"), m_ruleName);
     form->addRow(QStringLiteral("规则内容"), m_pattern);
 
-    auto* filterButton = new QPushButton(QStringLiteral("筛选"), this);
-    auto* clearButton = new QPushButton(QStringLiteral("清空筛选"), this);
-    auto* addTopButton = new QPushButton(QStringLiteral("新增顶层规则"), this);
-    m_addChildButton = new QPushButton(QStringLiteral("新增子规则"), this);
-    m_addChildButton->setEnabled(false);
-
     auto* buttons = new QHBoxLayout;
-    buttons->addWidget(filterButton);
-    buttons->addWidget(clearButton);
-    buttons->addWidget(addTopButton);
+    buttons->addWidget(m_filterButton);
+    buttons->addWidget(m_clearButton);
+    buttons->addWidget(m_addTopButton);
     buttons->addWidget(m_addChildButton);
 
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(form);
     layout->addLayout(buttons);
+}
 
+void FilterPanel::connectControls()
+{
     auto clearBoundRule = [this] { m_currentRuleId = 0; };
     connect(m_ruleName, &QLineEdit::textEdited, this, clearBoundRule);
     connect(m_pattern, &QLineEdit::textEdited, this, clearBoundRule);
@@ -126,9 +126,9 @@ FilterPanel::FilterPanel(QWidget* parent)
         emit filterRequested(filter());
     });
 
-    connect(filterButton, &QPushButton::clicked, this, [this] { emit filterRequested(filter()); });
+    connect(m_filterButton, &QPushButton::clicked, this, [this] { emit filterRequested(filter()); });
     connect(m_pattern, &QLineEdit::returnPressed, this, [this] { emit filterRequested(filter()); });
-    connect(clearButton, &QPushButton::clicked, this, [this] {
+    connect(m_clearButton, &QPushButton::clicked, this, [this] {
         m_ruleName->clear();
         m_pattern->clear();
         m_currentRuleId = 0;
@@ -137,7 +137,7 @@ FilterPanel::FilterPanel(QWidget* parent)
         m_wholeMatch->setChecked(true);
         emit clearRequested();
     });
-    connect(addTopButton, &QPushButton::clicked, this, [this] {
+    connect(m_addTopButton, &QPushButton::clicked, this, [this] {
         emit addTopRuleRequested(ruleFromInputs());
     });
     connect(m_addChildButton, &QPushButton::clicked, this, [this] {
