@@ -46,8 +46,9 @@ private:
     void bindProjectModels();
     void connectProjectSignals();
     void connectRulePanelSignals();
-    void connectScannerSignals();
-    void connectRuleEngineSignals();
+    void connectScannerSignals(quint64 projectGeneration);
+    void connectRuleEngineSignals(quint64 projectGeneration);
+    bool isCurrentProjectGeneration(quint64 projectGeneration) const;
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
@@ -86,5 +87,6 @@ private:
     QColor m_thumbnailBackgroundColor;
     bool m_thumbnailCheckerboardBackground = true;
     QString m_projectDir;
+    quint64 m_projectGeneration = 0;
     RuleRecord m_selectedRule;
 };

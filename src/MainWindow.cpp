@@ -244,6 +244,7 @@ void MainWindow::setProject(const QString& dbPath)
         return;
     }
     m_projectDir = QFileInfo(dbPath).absolutePath();
+    ++m_projectGeneration;
     m_images.setDatabase(m_database.db());
     m_rules.setDatabase(m_database.db());
 
@@ -306,8 +307,13 @@ void MainWindow::connectProjectSignals()
 {
     connect(m_table->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::showImage);
     connectRulePanelSignals();
-    connectScannerSignals();
-    connectRuleEngineSignals();
+    connectScannerSignals(m_projectGeneration);
+    connectRuleEngineSignals(m_projectGeneration);
+}
+
+bool MainWindow::isCurrentProjectGeneration(quint64 projectGeneration) const
+{
+    return projectGeneration == m_projectGeneration;
 }
 
 void MainWindow::connectRulePanelSignals()
@@ -361,9 +367,11 @@ void MainWindow::connectRulePanelSignals()
     });
 }
 
-void MainWindow::connectScannerSignals()
+void MainWindow::connectScannerSignals(quint64 projectGeneration)
 {
-    connect(m_scanner, &ProjectScanner::progress, this, [this](int current, int total, const QString& path) {
+    connect(m_scanner, &ProjectScanner::progress, this, [this, projectGeneration](int current, int total, const QString& path) {
+        if (!isCurrentProjectGeneration(projectGeneration))
+            return;
         m_progress->setVisible(true);
         if (total <= 0) {
             m_progress->setRange(0, 0);
@@ -375,34 +383,44 @@ void MainWindow::connectScannerSignals()
             m_status->setText(QStringLiteral("扫描中：%1 / %2（%3%） %4").arg(current).arg(total).arg(percent).arg(path));
         }
     });
-    connect(m_scanner, &ProjectScanner::finished, this, [this](int count) {
+    connect(m_scanner, &ProjectScanner::finished, this, [this, projectGeneration](int count) {
+        if (!isCurrentProjectGeneration(projectGeneration))
+            return;
         m_progress->setVisible(false);
         m_status->setText(QStringLiteral("扫描完成：%1 张图片").arg(count));
         reloadImages({});
         refreshStats();
     });
-    connect(m_scanner, &ProjectScanner::failed, this, [this](const QString& error) {
+    connect(m_scanner, &ProjectScanner::failed, this, [this, projectGeneration](const QString& error) {
+        if (!isCurrentProjectGeneration(projectGeneration))
+            return;
         m_progress->setVisible(false);
         QMessageBox::critical(this, QStringLiteral("扫描失败"), error);
     });
 }
 
-void MainWindow::connectRuleEngineSignals()
+void MainWindow::connectRuleEngineSignals(quint64 projectGeneration)
 {
-    connect(m_ruleEngine, &RuleEngine::progress, this, [this](int current, int total) {
+    connect(m_ruleEngine, &RuleEngine::progress, this, [this, projectGeneration](int current, int total) {
+        if (!isCurrentProjectGeneration(projectGeneration))
+            return;
         m_progress->setVisible(true);
         m_progress->setRange(0, total);
         m_progress->setValue(current);
         m_status->setText(QStringLiteral("规则重算中"));
     });
-    connect(m_ruleEngine, &RuleEngine::finished, this, [this] {
+    connect(m_ruleEngine, &RuleEngine::finished, this, [this, projectGeneration] {
+        if (!isCurrentProjectGeneration(projectGeneration))
+            return;
         m_progress->setVisible(false);
         m_status->setText(QStringLiteral("规则重算完成"));
         reloadImages(m_filter->filter());
         m_rulePanel->reload();
         refreshStats();
     });
-    connect(m_ruleEngine, &RuleEngine::failed, this, [this](const QString& error) {
+    connect(m_ruleEngine, &RuleEngine::failed, this, [this, projectGeneration](const QString& error) {
+        if (!isCurrentProjectGeneration(projectGeneration))
+            return;
         m_progress->setVisible(false);
         QMessageBox::critical(this, QStringLiteral("规则重算失败"), error);
     });

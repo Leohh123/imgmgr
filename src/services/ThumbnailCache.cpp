@@ -20,6 +20,9 @@ ThumbnailCache::ThumbnailCache(ImageRepository* repository, QObject* parent)
 
 void ThumbnailCache::setCacheDir(const QString& cacheDir)
 {
+    ++m_generation;
+    m_pending.clear();
+    m_memoryCache.clear();
     m_cacheDir = cacheDir;
     QDir().mkpath(m_cacheDir);
 }
@@ -64,6 +67,8 @@ QImage ThumbnailCache::thumbnail(const ImageRecord& image, const QSize& size)
 
 void ThumbnailCache::clearMemory()
 {
+    ++m_generation;
+    m_pending.clear();
     m_memoryCache.clear();
 }
 
@@ -81,9 +86,10 @@ void ThumbnailCache::scheduleGeneration(const ImageRecord& image, const QSize& s
     const QString outputPath = diskPathFor(image);
     const QString sourcePath = image.absolutePath;
     const int imageId = image.id;
+    const quint64 generation = m_generation;
     auto* repo = m_repository;
 
-    [[maybe_unused]] auto future = QtConcurrent::run([this, repo, imageId, sourcePath, outputPath, size]() {
+    [[maybe_unused]] auto future = QtConcurrent::run([this, repo, imageId, sourcePath, outputPath, size, generation]() {
         QImageReader reader(sourcePath);
         reader.setAutoTransform(true);
         QSize scaled = reader.size();
@@ -95,7 +101,9 @@ void ThumbnailCache::scheduleGeneration(const ImageRecord& image, const QSize& s
             QDir().mkpath(QFileInfo(outputPath).absolutePath());
             thumb.save(outputPath, "PNG");
         }
-        QMetaObject::invokeMethod(this, [this, repo, imageId, outputPath, thumb]() {
+        QMetaObject::invokeMethod(this, [this, repo, imageId, outputPath, thumb, generation]() {
+            if (generation != m_generation)
+                return;
             m_pending.remove(imageId);
             if (!thumb.isNull()) {
                 m_memoryCache.insert(imageId, new QImage(thumb), 1);

@@ -29,4 +29,5 @@ private:
     QString m_cacheDir;
     QCache<int, QImage> m_memoryCache;
     QSet<int> m_pending;
+    quint64 m_generation = 0;
 };
