@@ -5,25 +5,21 @@
 #include "utils/RecentProjectsStore.h"
 #include "utils/RuleUtils.h"
 #include "utils/UiUtils.h"
+#include "widgets/RuleEditDialog.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QButtonGroup>
-#include <QCheckBox>
-#include <QComboBox>
 #include <QDir>
 #include <QDialog>
-#include <QDialogButtonBox>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFormLayout>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
-#include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QElapsedTimer>
@@ -31,7 +27,6 @@
 #include <QProgressBar>
 #include <QRegularExpression>
 #include <QSplitter>
-#include <QSpinBox>
 #include <QSqlQuery>
 #include <QStatusBar>
 #include <QStyledItemDelegate>
@@ -521,124 +516,18 @@ void MainWindow::importRulesFromJson()
 
 bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
 {
-    QDialog dialog(this);
-    dialog.setWindowTitle(title);
-
     const QVector<RuleRecord> allRules = m_rules.fetchRules(false);
-    QHash<int, RuleRecord> rulesById;
-    for (const RuleRecord& item : allRules)
-        rulesById.insert(item.id, item);
     QSet<int> invalidParentIds;
     if (rule.id > 0) {
         invalidParentIds.insert(rule.id);
         for (int childId : m_rules.childRuleIdsRecursive(rule.id))
             invalidParentIds.insert(childId);
     }
-    auto localRulePath = [&rulesById](int ruleId) {
-        QStringList parts;
-        QSet<int> seen;
-        int current = ruleId;
-        while (current != 0 && rulesById.contains(current) && !seen.contains(current)) {
-            seen.insert(current);
-            const RuleRecord item = rulesById.value(current);
-            parts.prepend(item.name);
-            current = item.parentId;
-        }
-        return parts.join(QStringLiteral(" / "));
-    };
-
-    auto* name = new QLineEdit(rule.name, &dialog);
-    auto* parent = new QComboBox(&dialog);
-    parent->addItem(QStringLiteral("无（顶层规则）"), 0);
-    for (const RuleRecord& item : allRules) {
-        if (invalidParentIds.contains(item.id))
-            continue;
-        parent->addItem(localRulePath(item.id), item.id);
-    }
-    parent->setCurrentIndex(parent->findData(rule.parentId));
-    if (parent->currentIndex() < 0)
-        parent->setCurrentIndex(0);
-
-    auto* pattern = new QLineEdit(rule.pattern, &dialog);
-    auto* type = new QComboBox(&dialog);
-    type->addItem(QStringLiteral("通配符"), RuleUtils::globRuleType());
-    type->addItem(QStringLiteral("正则表达式"), RuleUtils::regexRuleType());
-    type->setCurrentIndex(type->findData(rule.ruleType));
-    if (type->currentIndex() < 0)
-        type->setCurrentIndex(0);
-
-    auto* target = new QComboBox(&dialog);
-    UiUtils::populateMatchTargetCombo(target);
-    target->setCurrentIndex(target->findData(rule.matchTarget));
-    if (target->currentIndex() < 0)
-        target->setCurrentIndex(0);
-
-    auto* priority = new QSpinBox(&dialog);
-    priority->setRange(-100000, 100000);
-    priority->setValue(rule.priority);
-    auto* enabled = new QCheckBox(QStringLiteral("启用"), &dialog);
-    enabled->setChecked(rule.enabled);
-    auto* allowConflict = new QCheckBox(QStringLiteral("允许冲突"), &dialog);
-    allowConflict->setChecked(rule.allowConflict);
-    auto* caseSensitive = new QCheckBox(QStringLiteral("区分大小写"), &dialog);
-    caseSensitive->setChecked(rule.caseSensitive);
-    auto* wholeMatch = new QCheckBox(QStringLiteral("全字匹配"), &dialog);
-    wholeMatch->setChecked(rule.wholeMatch);
-    auto* note = new QLineEdit(rule.note, &dialog);
-
-    auto* form = new QFormLayout;
-    form->addRow(QStringLiteral("规则名称"), name);
-    form->addRow(QStringLiteral("父规则"), parent);
-    form->addRow(QStringLiteral("规则内容"), pattern);
-    form->addRow(QStringLiteral("规则类型"), type);
-    form->addRow(QStringLiteral("匹配目标"), target);
-    form->addRow(QStringLiteral("优先级"), priority);
-    form->addRow(QString(), enabled);
-    form->addRow(QString(), allowConflict);
-    form->addRow(QString(), caseSensitive);
-    form->addRow(QString(), wholeMatch);
-    form->addRow(QStringLiteral("备注"), note);
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->addLayout(form);
-    layout->addWidget(buttons);
-
-    while (dialog.exec() == QDialog::Accepted) {
-        const QString ruleName = name->text().trimmed();
-        const QString rulePattern = pattern->text().trimmed();
-        if (ruleName.isEmpty()) {
-            QMessageBox::warning(&dialog, QStringLiteral("规则名称为空"), QStringLiteral("请输入规则名称。"));
-            continue;
-        }
-        if (rulePattern.isEmpty()) {
-            QMessageBox::warning(&dialog, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
-            continue;
-        }
-        if (type->currentData().toString() == RuleUtils::regexRuleType()) {
-            QRegularExpression re(rulePattern);
-            if (!re.isValid()) {
-                QMessageBox::warning(&dialog, QStringLiteral("正则无效"), re.errorString());
-                continue;
-            }
-        }
-        rule.name = ruleName;
-        rule.parentId = parent->currentData().toInt();
-        rule.pattern = rulePattern;
-        rule.ruleType = type->currentData().toString();
-        rule.matchTarget = target->currentData().toString();
-        rule.priority = priority->value();
-        rule.enabled = enabled->isChecked();
-        rule.allowConflict = allowConflict->isChecked();
-        rule.caseSensitive = caseSensitive->isChecked();
-        rule.wholeMatch = wholeMatch->isChecked();
-        rule.note = note->text();
-        return true;
-    }
-    return false;
+    RuleEditDialog dialog(rule, allRules, invalidParentIds, title, this);
+    if (dialog.exec() != QDialog::Accepted)
+        return false;
+    rule = dialog.rule();
+    return true;
 }
 
 QString MainWindow::rulePath(int ruleId, const QHash<int, RuleRecord>& rulesById) const
