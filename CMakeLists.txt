@@ -32,6 +32,8 @@ qt_add_executable(imgmgr
     src/services/RuleEngine.cpp
     src/services/ProjectStatsService.h
     src/services/ProjectStatsService.cpp
+    src/services/RuleJsonService.h
+    src/services/RuleJsonService.cpp
     src/widgets/ImagePreviewWidget.h
     src/widgets/ImagePreviewWidget.cpp
     src/widgets/FilterPanel.h

@@ -7,6 +7,7 @@
 #include "utils/RuleUtils.h"
 #include "utils/UiUtils.h"
 #include "services/ProjectStatsService.h"
+#include "services/RuleJsonService.h"
 #include "widgets/RuleEditDialog.h"
 
 #include <QAction>
@@ -18,9 +19,6 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -470,25 +468,15 @@ void MainWindow::exportRulesToJson()
     if (path.isEmpty())
         return;
 
-    QJsonArray ruleArray;
     const QVector<RuleRecord> rules = m_rules.fetchRules(false);
-    QHash<int, QVector<RuleRecord>> childrenByParent;
-    for (const RuleRecord& rule : rules)
-        childrenByParent[rule.parentId].append(rule);
-    for (const RuleRecord& rule : childrenByParent.value(0))
-        ruleArray.append(RuleUtils::ruleTreeToJson(rule, childrenByParent));
-
-    QJsonObject root;
-    root.insert(QStringLiteral("format"), QStringLiteral("imgmgr.rules"));
-    root.insert(QStringLiteral("version"), 2);
-    root.insert(QStringLiteral("rules"), ruleArray);
+    const QJsonDocument document = RuleJsonService::buildExportDocument(rules);
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         QMessageBox::critical(this, QStringLiteral("导出失败"), file.errorString());
         return;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.write(document.toJson(QJsonDocument::Indented));
     QMessageBox::information(this, QStringLiteral("导出完成"), QStringLiteral("已导出 %1 条规则。").arg(rules.size()));
 }
 
@@ -512,36 +500,9 @@ void MainWindow::importRulesFromJson()
         return;
     }
 
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError) {
-        QMessageBox::critical(this, QStringLiteral("导入失败"), parseError.errorString());
-        return;
-    }
-
-    QJsonArray ruleArray;
-    if (document.isObject()) {
-        const QJsonObject root = document.object();
-        if (!root.contains(QStringLiteral("rules")) || !root.value(QStringLiteral("rules")).isArray()) {
-            QMessageBox::critical(this, QStringLiteral("导入失败"), QStringLiteral("JSON 中缺少 rules 数组。"));
-            return;
-        }
-        ruleArray = root.value(QStringLiteral("rules")).toArray();
-    } else if (document.isArray()) {
-        ruleArray = document.array();
-    } else {
-        QMessageBox::critical(this, QStringLiteral("导入失败"), QStringLiteral("JSON 根节点必须是对象或数组。"));
-        return;
-    }
-
     QString error;
     QVector<RuleRecord> rules;
-    if (!RuleUtils::appendRulesFromJsonTree(ruleArray, 0, &rules, &error)) {
-        QMessageBox::critical(this, QStringLiteral("导入失败"), error);
-        return;
-    }
-
-    if (!RuleUtils::validateImportedRules(rules, &error)) {
+    if (!RuleJsonService::parseImportDocument(file.readAll(), &rules, &error)) {
         QMessageBox::critical(this, QStringLiteral("导入失败"), error);
         return;
     }
