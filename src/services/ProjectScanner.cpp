@@ -6,7 +6,67 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QMetaObject>
+#include <QPointer>
 #include <QtConcurrent>
+
+#include <functional>
+
+namespace {
+QVector<QString> enumerateImageFiles(const QString& resourceDir, const std::function<void(int, const QString&)>& onProgress)
+{
+    QVector<QString> files;
+    QDirIterator it(resourceDir, QDir::Files, QDirIterator::Subdirectories);
+    int discovered = 0;
+    while (it.hasNext()) {
+        const QString path = it.next();
+        if (ImageUtils::isSupportedImageFile(path)) {
+            files << path;
+            ++discovered;
+            if (discovered == 1 || discovered % 200 == 0)
+                onProgress(discovered, QFileInfo(path).fileName());
+        }
+    }
+    return files;
+}
+
+ImageRecord readImageMetadata(const QString& path, const QDir& root)
+{
+    QFileInfo fi(path);
+    QImageReader reader(path);
+    const QSize size = reader.size();
+    const QImage image = reader.read();
+
+    ImageRecord record;
+    record.absolutePath = fi.absoluteFilePath();
+    record.relativePath = QDir::toNativeSeparators(root.relativeFilePath(fi.absoluteFilePath()));
+    record.fileName = fi.fileName();
+    record.fileStem = fi.completeBaseName();
+    record.parentDir = QDir::toNativeSeparators(root.relativeFilePath(fi.absolutePath()));
+    record.extension = fi.suffix().toLower();
+    record.fileSize = fi.size();
+    record.modifiedTime = fi.lastModified().toSecsSinceEpoch();
+    record.width = size.width();
+    record.height = size.height();
+    record.hasAlpha = !image.isNull() && image.hasAlphaChannel();
+    record.imageFormat = QString::fromLatin1(reader.format()).toLower();
+    return record;
+}
+
+void publishProgress(
+    const QPointer<ProjectScanner>& scanner,
+    int current,
+    int total,
+    const QString& path)
+{
+    if (!scanner)
+        return;
+    QMetaObject::invokeMethod(scanner, [scanner, current, total, path] {
+        if (scanner)
+            emit scanner->progress(current, total, path);
+    }, Qt::QueuedConnection);
+}
+}
 
 ProjectScanner::ProjectScanner(ImageRepository* repository, QObject* parent)
     : QObject(parent)
@@ -40,49 +100,24 @@ void ProjectScanner::scan(const QString& resourceDir)
         emit finished(records.size());
     });
 
-    auto future = QtConcurrent::run([this, resourceDir]() {
-        QVector<QString> files;
-        QDirIterator it(resourceDir, QDir::Files, QDirIterator::Subdirectories);
-        int discovered = 0;
-        emit progress(0, 0, QStringLiteral("开始枚举"));
-        while (it.hasNext()) {
-            const QString path = it.next();
-            if (ImageUtils::isSupportedImageFile(path)) {
-                files << path;
-                ++discovered;
-                if (discovered == 1 || discovered % 200 == 0)
-                    emit progress(discovered, 0, QFileInfo(path).fileName());
-            }
-        }
-        emit progress(0, files.size(), QStringLiteral("读取图片元数据"));
+    QPointer<ProjectScanner> scanner(this);
+    auto future = QtConcurrent::run([scanner, resourceDir]() {
+        publishProgress(scanner, 0, 0, QStringLiteral("开始枚举"));
+        const QVector<QString> files = enumerateImageFiles(resourceDir, [scanner](int discovered, const QString& fileName) {
+            publishProgress(scanner, discovered, 0, fileName);
+        });
+        publishProgress(scanner, 0, files.size(), QStringLiteral("读取图片元数据"));
 
         QVector<ImageRecord> records;
         records.reserve(files.size());
         QDir root(resourceDir);
         for (int i = 0; i < files.size(); ++i) {
-            const QString path = files.at(i);
-            QFileInfo fi(path);
-            QImageReader reader(path);
-            const QSize size = reader.size();
-            const QImage image = reader.read();
-            ImageRecord r;
-            r.absolutePath = fi.absoluteFilePath();
-            r.relativePath = QDir::toNativeSeparators(root.relativeFilePath(fi.absoluteFilePath()));
-            r.fileName = fi.fileName();
-            r.fileStem = fi.completeBaseName();
-            r.parentDir = QDir::toNativeSeparators(root.relativeFilePath(fi.absolutePath()));
-            r.extension = fi.suffix().toLower();
-            r.fileSize = fi.size();
-            r.modifiedTime = fi.lastModified().toSecsSinceEpoch();
-            r.width = size.width();
-            r.height = size.height();
-            r.hasAlpha = !image.isNull() && image.hasAlphaChannel();
-            r.imageFormat = QString::fromLatin1(reader.format()).toLower();
+            const ImageRecord r = readImageMetadata(files.at(i), root);
             records << r;
             if (i == 0 || i % 25 == 0 || i + 1 == files.size())
-                emit progress(i + 1, files.size(), r.relativePath);
+                publishProgress(scanner, i + 1, files.size(), r.relativePath);
         }
-        emit progress(files.size(), files.size(), QString());
+        publishProgress(scanner, files.size(), files.size(), QString());
         return records;
     });
     watcher->setFuture(future);
