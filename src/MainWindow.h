@@ -52,7 +52,6 @@ private:
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
-    bool validateRuleForSave(const RuleRecord& rule);
     bool addRuleAndRecalculate(const RuleRecord& rule);
     void reloadImages(const ImageFilter& filter = {});
     void updateFilterStatus(qint64 elapsedMs);

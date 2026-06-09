@@ -8,6 +8,7 @@
 #include "utils/UiUtils.h"
 #include "services/ProjectStatsService.h"
 #include "services/RuleJsonService.h"
+#include "services/RuleValidationService.h"
 #include "widgets/RuleEditDialog.h"
 
 #include <QAction>
@@ -25,7 +26,6 @@
 #include <QElapsedTimer>
 #include <QPainter>
 #include <QProgressBar>
-#include <QRegularExpression>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QStyledItemDelegate>
@@ -146,12 +146,10 @@ void MainWindow::buildUi()
     statusBar()->addPermanentWidget(m_progress);
 
     connect(m_filter, &FilterPanel::filterRequested, this, [this](const ImageFilter& f) {
-        if (f.ruleType == RuleUtils::regexRuleType() && !f.pattern.trimmed().isEmpty()) {
-            QRegularExpression re(f.pattern);
-            if (!re.isValid()) {
-                QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
-                return;
-            }
+        RuleValidationService::ValidationError error;
+        if (!RuleValidationService::validateFilterPattern(f, &error)) {
+            QMessageBox::warning(this, error.title, error.message);
+            return;
         }
         reloadImages(f);
     });
@@ -632,30 +630,13 @@ void MainWindow::saveChildRule(const RuleRecord& input)
     addRuleAndRecalculate(rule);
 }
 
-bool MainWindow::validateRuleForSave(const RuleRecord& rule)
-{
-    if (rule.name.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("规则名称为空"), QStringLiteral("请输入规则名称，例如“按钮”。"));
-        return false;
-    }
-    if (rule.pattern.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
-        return false;
-    }
-    if (rule.ruleType == RuleUtils::regexRuleType()) {
-        QRegularExpression re(rule.pattern);
-        if (!re.isValid()) {
-            QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
-            return false;
-        }
-    }
-    return true;
-}
-
 bool MainWindow::addRuleAndRecalculate(const RuleRecord& rule)
 {
-    if (!validateRuleForSave(rule))
+    RuleValidationService::ValidationError error;
+    if (!RuleValidationService::validateRuleForSave(rule, &error)) {
+        QMessageBox::warning(this, error.title, error.message);
         return false;
+    }
     if (!m_rules.addRule(rule)) {
         QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
         return false;
