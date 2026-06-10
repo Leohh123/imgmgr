@@ -516,10 +516,8 @@ void MainWindow::addRecentProject(const QString& dbPath)
 
 void MainWindow::exportRulesToJson()
 {
-    if (!m_database.db().isOpen()) {
-        QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先打开项目数据库。"));
+    if (!hasOpenProject())
         return;
-    }
 
     const QString path = ProjectFileDialogs::selectRuleExportPath(this);
     if (path.isEmpty())
@@ -538,10 +536,8 @@ void MainWindow::exportRulesToJson()
 
 void MainWindow::importRulesFromJson()
 {
-    if (!m_database.db().isOpen()) {
-        QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先打开项目数据库。"));
+    if (!hasOpenProject())
         return;
-    }
 
     const QString path = ProjectFileDialogs::selectRuleImportPath(this);
     if (path.isEmpty())
@@ -566,6 +562,28 @@ void MainWindow::importRulesFromJson()
     if (!applyImportedRules(rules))
         return;
     QMessageBox::information(this, QStringLiteral("导入完成"), QStringLiteral("已导入 %1 条规则。").arg(rules.size()));
+}
+
+bool MainWindow::hasOpenProject()
+{
+    if (m_database.db().isOpen())
+        return true;
+    QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先打开项目数据库。"));
+    return false;
+}
+
+bool MainWindow::ensureProjectForScanning()
+{
+    if (!m_database.db().isOpen()) {
+        openProject();
+        if (!m_database.db().isOpen())
+            return false;
+    }
+    if (m_scanner)
+        return true;
+
+    QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先新建或打开项目数据库。"));
+    return false;
 }
 
 bool MainWindow::confirmReplaceRules(int ruleCount)
@@ -701,15 +719,9 @@ void MainWindow::showProgressFailure(const QString& title, const QString& error)
 
 void MainWindow::scanResourceDirectory()
 {
-    if (!m_database.db().isOpen()) {
-        openProject();
-        if (!m_database.db().isOpen())
-            return;
-    }
-    if (!m_scanner) {
-        QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先新建或打开项目数据库。"));
+    if (!ensureProjectForScanning())
         return;
-    }
+
     const QString dir = ProjectFileDialogs::selectResourceDirectory(this);
     if (dir.isEmpty())
         return;

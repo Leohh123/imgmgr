@@ -67,6 +67,8 @@ private:
     void toggleSelectedRuleEnabled(const RuleRecord& selectedRule);
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
+    bool hasOpenProject();
+    bool ensureProjectForScanning();
     bool confirmReplaceRules(int ruleCount);
     bool applyImportedRules(const QVector<RuleRecord>& rules);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
