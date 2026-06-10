@@ -60,6 +60,7 @@ private:
     void connectScannerSignals(quint64 projectGeneration);
     void connectRuleEngineSignals(quint64 projectGeneration);
     bool isCurrentProjectGeneration(quint64 projectGeneration) const;
+    void applySelectedRuleFilter(const RuleRecord& rule);
     void selectRuleForFilter(const RuleRecord& rule);
     void clearSelectedRule(bool clearFilterBinding);
     void editSelectedRule(const RuleRecord& selectedRule);
@@ -72,7 +73,10 @@ private:
     bool confirmReplaceRules(int ruleCount);
     bool applyImportedRules(const QVector<RuleRecord>& rules);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
+    bool saveUpdatedRule(const RuleRecord& rule);
     bool addRuleAndRecalculate(const RuleRecord& rule);
+    void reloadRulePanel();
+    void showRuleSaveFailure();
     void reloadImages(const ImageFilter& filter = {});
     void reloadImagesAndStats(const ImageFilter& filter);
     void reloadAfterRuleRecalculation();

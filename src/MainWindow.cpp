@@ -312,7 +312,7 @@ void MainWindow::bindProjectModels()
     reloadImages({});
     clearSelectedRule(false);
     installRulePanelTab();
-    m_rulePanel->reload();
+    reloadRulePanel();
 }
 
 void MainWindow::clearProjectViews()
@@ -390,19 +390,25 @@ void MainWindow::clearSelectedRule(bool clearFilterBinding)
 
 void MainWindow::connectRulePanelSignals()
 {
-    connect(m_rulePanel, &RulePanel::ruleSelected, this, [this](const RuleRecord& rule) {
-        selectRuleForFilter(rule);
-        ImageFilter f = m_filter->filter();
-        if (!rule.enabled)
-            f.currentRuleId = 0;
-        reloadImages(f);
-    });
+    connect(m_rulePanel, &RulePanel::ruleSelected, this, &MainWindow::applySelectedRuleFilter);
     connect(m_rulePanel, &RulePanel::ruleSelectionCleared, this, [this] {
         clearSelectedRule(true);
     });
     connect(m_rulePanel, &RulePanel::editRuleRequested, this, &MainWindow::editSelectedRule);
     connect(m_rulePanel, &RulePanel::deleteRuleRequested, this, &MainWindow::deleteSelectedRule);
     connect(m_rulePanel, &RulePanel::toggleRuleRequested, this, &MainWindow::toggleSelectedRuleEnabled);
+}
+
+void MainWindow::applySelectedRuleFilter(const RuleRecord& rule)
+{
+    selectRuleForFilter(rule);
+    if (!m_filter)
+        return;
+
+    ImageFilter filter = m_filter->filter();
+    if (!rule.enabled)
+        filter.currentRuleId = 0;
+    reloadImages(filter);
 }
 
 void MainWindow::editSelectedRule(const RuleRecord& selectedRule)
@@ -412,8 +418,8 @@ void MainWindow::editSelectedRule(const RuleRecord& selectedRule)
         return;
     if (!editRuleWithDialog(rule, QStringLiteral("编辑规则")))
         return;
-    if (!m_rules.updateRule(rule))
-        QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
+    if (!saveUpdatedRule(rule))
+        return;
     recalculateRules();
 }
 
@@ -437,10 +443,8 @@ void MainWindow::toggleSelectedRuleEnabled(const RuleRecord& selectedRule)
     if (rule.id == 0)
         return;
     rule.enabled = !rule.enabled;
-    if (!m_rules.updateRule(rule)) {
-        QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
+    if (!saveUpdatedRule(rule))
         return;
-    }
     recalculateRules();
 }
 
@@ -604,8 +608,7 @@ bool MainWindow::applyImportedRules(const QVector<RuleRecord>& rules)
     }
 
     clearSelectedRule(true);
-    if (m_rulePanel)
-        m_rulePanel->reload();
+    reloadRulePanel();
     recalculateRules();
     return true;
 }
@@ -624,6 +627,14 @@ bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
         return false;
     rule = dialog.rule();
     return true;
+}
+
+bool MainWindow::saveUpdatedRule(const RuleRecord& rule)
+{
+    if (m_rules.updateRule(rule))
+        return true;
+    showRuleSaveFailure();
+    return false;
 }
 
 void MainWindow::reloadImages(const ImageFilter& filter)
@@ -645,8 +656,7 @@ void MainWindow::reloadImagesAndStats(const ImageFilter& filter)
 void MainWindow::reloadAfterRuleRecalculation()
 {
     reloadImages(m_filter ? m_filter->filter() : ImageFilter {});
-    if (m_rulePanel)
-        m_rulePanel->reload();
+    reloadRulePanel();
     refreshStats();
 }
 
@@ -763,12 +773,23 @@ bool MainWindow::addRuleAndRecalculate(const RuleRecord& rule)
         return false;
     }
     if (!m_rules.addRule(rule)) {
-        QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
+        showRuleSaveFailure();
         return false;
     }
-    m_rulePanel->reload();
+    reloadRulePanel();
     recalculateRules();
     return true;
+}
+
+void MainWindow::reloadRulePanel()
+{
+    if (m_rulePanel)
+        m_rulePanel->reload();
+}
+
+void MainWindow::showRuleSaveFailure()
+{
+    QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
 }
 
 void MainWindow::recalculateRules()
