@@ -52,6 +52,30 @@ RuleNode* appendChildNode(RuleNode* parent, std::unique_ptr<RuleNode> node)
     parent->children.push_back(std::move(node));
     return raw;
 }
+
+bool attachRulesWithAvailableParents(QVector<RuleRecord>* rules, QHash<int, RuleNode*>* nodesById)
+{
+    bool attachedAny = false;
+    for (int i = 0; i < rules->size(); ++i) {
+        const RuleRecord rule = rules->at(i);
+        RuleNode* parentNode = nodesById->value(rule.parentId, nullptr);
+        if (!parentNode)
+            continue;
+
+        RuleNode* childNode = appendChildNode(parentNode, makeNode(rule, parentNode));
+        nodesById->insert(rule.id, childNode);
+        rules->removeAt(i);
+        --i;
+        attachedAny = true;
+    }
+    return attachedAny;
+}
+
+void attachOrphanRulesToRoot(const QVector<RuleRecord>& rules, RuleNode* root)
+{
+    for (const RuleRecord& rule : rules)
+        appendChildNode(root, makeNode(rule, root));
+}
 }
 
 RuleTreeModel::RuleTreeModel(RuleRepository* repository, QObject* parent)
@@ -128,24 +152,11 @@ void RuleTreeModel::reload()
     byId.insert(0, m_root.get());
     QVector<RuleRecord> rules = m_repository ? m_repository->fetchRules(false) : QVector<RuleRecord>();
 
-    bool attached = true;
-    while (attached && !rules.isEmpty()) {
-        attached = false;
-        for (int i = 0; i < rules.size(); ++i) {
-            RuleRecord rule = rules.at(i);
-            RuleNode* parentNode = byId.value(rule.parentId, nullptr);
-            if (!parentNode)
-                continue;
-            RuleNode* raw = appendChildNode(parentNode, makeNode(rule, parentNode));
-            byId.insert(rule.id, raw);
-            rules.removeAt(i);
-            --i;
-            attached = true;
-        }
+    while (!rules.isEmpty()) {
+        if (!attachRulesWithAvailableParents(&rules, &byId))
+            break;
     }
-    for (const auto& rule : rules) {
-        appendChildNode(m_root.get(), makeNode(rule, m_root.get()));
-    }
+    attachOrphanRulesToRoot(rules, m_root.get());
     endResetModel();
 }
 

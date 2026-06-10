@@ -48,12 +48,9 @@ ImageListModel::ImageListModel(ImageRepository* repository, ThumbnailCache* thum
 {
     if (m_thumbnails) {
         connect(m_thumbnails, &ThumbnailCache::thumbnailReady, this, [this](int imageId) {
-            for (int row = 0; row < m_images.size(); ++row) {
-                if (m_images[row].id == imageId) {
-                    emit dataChanged(index(row, ThumbnailColumn), index(row, ThumbnailColumn), { Qt::DecorationRole });
-                    break;
-                }
-            }
+            const int row = rowForImageId(imageId);
+            if (row >= 0)
+                emit dataChanged(index(row, ThumbnailColumn), index(row, ThumbnailColumn), { Qt::DecorationRole });
         });
     }
 }
@@ -73,15 +70,14 @@ QVariant ImageListModel::data(const QModelIndex& index, int role) const
     if (!index.isValid() || index.row() >= m_images.size())
         return {};
     const auto& image = m_images.at(index.row());
-    if (role == Qt::DecorationRole && index.column() == ThumbnailColumn && m_thumbnails)
-        return QPixmap::fromImage(m_thumbnails->thumbnail(image, QSize(ThumbnailExtent, ThumbnailExtent)))
-            .scaled(ThumbnailExtent, ThumbnailExtent, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    if (role == Qt::DecorationRole)
+        return decorationForImage(image, index.column());
     if (role == Qt::SizeHintRole)
         return rowSizeHint(image, index.column());
     if (role == Qt::DisplayRole)
         return displayValueForColumn(image, index.column());
-    if (role == Qt::BackgroundRole && image.status == ImageStatus::Conflict)
-        return QBrush(QColor(255, 220, 220));
+    if (role == Qt::BackgroundRole)
+        return backgroundForImage(image);
     if (role == Qt::UserRole)
         return image.id;
     return {};
@@ -129,4 +125,29 @@ int ImageListModel::statusCount(ImageStatus status) const
             ++count;
     }
     return count;
+}
+
+int ImageListModel::rowForImageId(int imageId) const
+{
+    for (int row = 0; row < m_images.size(); ++row) {
+        if (m_images.at(row).id == imageId)
+            return row;
+    }
+    return -1;
+}
+
+QVariant ImageListModel::decorationForImage(const ImageRecord& image, int column) const
+{
+    if (column != ThumbnailColumn || !m_thumbnails)
+        return {};
+
+    return QPixmap::fromImage(m_thumbnails->thumbnail(image, QSize(ThumbnailExtent, ThumbnailExtent)))
+        .scaled(ThumbnailExtent, ThumbnailExtent, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+}
+
+QVariant ImageListModel::backgroundForImage(const ImageRecord& image) const
+{
+    if (image.status != ImageStatus::Conflict)
+        return {};
+    return QBrush(QColor(255, 220, 220));
 }

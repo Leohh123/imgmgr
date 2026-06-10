@@ -27,6 +27,10 @@ signals:
     void imageActivated(const ImageRecord& image);
 
 private:
+    int rowForImageId(int imageId) const;
+    QVariant decorationForImage(const ImageRecord& image, int column) const;
+    QVariant backgroundForImage(const ImageRecord& image) const;
+
     ImageRepository* m_repository = nullptr;
     ThumbnailCache* m_thumbnails = nullptr;
     QVector<ImageRecord> m_images;
