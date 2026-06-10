@@ -2,6 +2,7 @@
 
 #include "utils/ImageTableUtils.h"
 #include "utils/PaintUtils.h"
+#include "utils/ProjectFileDialogs.h"
 #include "utils/RecentProjectsStore.h"
 #include "utils/RuleExplanationBuilder.h"
 #include "utils/RuleUtils.h"
@@ -18,7 +19,6 @@
 #include <QDir>
 #include <QDialog>
 #include <QFile>
-#include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QLabel>
@@ -212,24 +212,14 @@ void MainWindow::applyThumbnailBackgroundColor()
 
 void MainWindow::createProject()
 {
-    QFileDialog dialog(this, QStringLiteral("新建项目数据库"), QDir::currentPath(), QStringLiteral("SQLite DB (*.db)"));
-    dialog.setAcceptMode(QFileDialog::AcceptSave);
-    dialog.setDefaultSuffix(QStringLiteral("db"));
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-    const QString dbPath = dialog.selectedFiles().value(0);
+    const QString dbPath = ProjectFileDialogs::selectNewProjectDatabase(this);
     if (!dbPath.isEmpty())
         setProject(dbPath);
 }
 
 void MainWindow::openProject()
 {
-    QFileDialog dialog(this, QStringLiteral("打开项目数据库"), QDir::currentPath(), QStringLiteral("SQLite DB (*.db)"));
-    dialog.setAcceptMode(QFileDialog::AcceptOpen);
-    dialog.setFileMode(QFileDialog::ExistingFile);
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-    const QString dbPath = dialog.selectedFiles().value(0);
+    const QString dbPath = ProjectFileDialogs::selectExistingProjectDatabase(this);
     if (!dbPath.isEmpty())
         setProject(dbPath);
 }
@@ -474,10 +464,7 @@ void MainWindow::exportRulesToJson()
         return;
     }
 
-    const QString path = QFileDialog::getSaveFileName(this,
-        QStringLiteral("导出规则为 JSON"),
-        QDir::currentPath(),
-        QStringLiteral("JSON 文件 (*.json)"));
+    const QString path = ProjectFileDialogs::selectRuleExportPath(this);
     if (path.isEmpty())
         return;
 
@@ -500,10 +487,7 @@ void MainWindow::importRulesFromJson()
         return;
     }
 
-    const QString path = QFileDialog::getOpenFileName(this,
-        QStringLiteral("从 JSON 导入规则并覆盖"),
-        QDir::currentPath(),
-        QStringLiteral("JSON 文件 (*.json)"));
+    const QString path = ProjectFileDialogs::selectRuleImportPath(this);
     if (path.isEmpty())
         return;
 
@@ -593,7 +577,7 @@ void MainWindow::scanResourceDirectory()
         QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先新建或打开项目数据库。"));
         return;
     }
-    const QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择资源目录"));
+    const QString dir = ProjectFileDialogs::selectResourceDirectory(this);
     if (dir.isEmpty())
         return;
     if (ProjectPathService::projectWritesWouldTouchResourceDir(m_projectDir, dir)) {
