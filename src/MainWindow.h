@@ -56,6 +56,8 @@ private:
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
     bool addRuleAndRecalculate(const RuleRecord& rule);
     void reloadImages(const ImageFilter& filter = {});
+    void reloadImagesAndStats(const ImageFilter& filter);
+    void reloadAfterRuleRecalculation();
     void updateFilterStatus(qint64 elapsedMs);
     void showScannerProgress(int current, int total, const QString& path);
     void showRuleEngineProgress(int current, int total);

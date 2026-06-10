@@ -379,8 +379,7 @@ void MainWindow::connectScannerSignals(quint64 projectGeneration)
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         hideProgressWithStatus(QStringLiteral("扫描完成：%1 张图片").arg(count));
-        reloadImages({});
-        refreshStats();
+        reloadImagesAndStats({});
     });
     connect(m_scanner, &ProjectScanner::failed, this, [this, projectGeneration](const QString& error) {
         if (!isCurrentProjectGeneration(projectGeneration))
@@ -401,9 +400,7 @@ void MainWindow::connectRuleEngineSignals(quint64 projectGeneration)
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         hideProgressWithStatus(QStringLiteral("规则重算完成"));
-        reloadImages(m_filter->filter());
-        m_rulePanel->reload();
-        refreshStats();
+        reloadAfterRuleRecalculation();
     });
     connect(m_ruleEngine, &RuleEngine::failed, this, [this, projectGeneration](const QString& error) {
         if (!isCurrentProjectGeneration(projectGeneration))
@@ -534,6 +531,20 @@ void MainWindow::reloadImages(const ImageFilter& filter)
     timer.start();
     m_imageModel->reload(filter);
     updateFilterStatus(timer.elapsed());
+}
+
+void MainWindow::reloadImagesAndStats(const ImageFilter& filter)
+{
+    reloadImages(filter);
+    refreshStats();
+}
+
+void MainWindow::reloadAfterRuleRecalculation()
+{
+    reloadImages(m_filter ? m_filter->filter() : ImageFilter {});
+    if (m_rulePanel)
+        m_rulePanel->reload();
+    refreshStats();
 }
 
 void MainWindow::updateFilterStatus(qint64 elapsedMs)
