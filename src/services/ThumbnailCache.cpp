@@ -10,6 +10,25 @@
 #include <QThread>
 #include <QtConcurrent>
 
+namespace {
+QImage generateThumbnailImage(const QString& sourcePath, const QString& outputPath, const QSize& size)
+{
+    QImageReader reader(sourcePath);
+    reader.setAutoTransform(true);
+    QSize scaled = reader.size();
+    if (scaled.isValid())
+        scaled.scale(size, Qt::KeepAspectRatio);
+    reader.setScaledSize(scaled.isValid() ? scaled : size);
+
+    QImage thumbnail = reader.read();
+    if (!thumbnail.isNull()) {
+        QDir().mkpath(QFileInfo(outputPath).absolutePath());
+        thumbnail.save(outputPath, "PNG");
+    }
+    return thumbnail;
+}
+}
+
 ThumbnailCache::ThumbnailCache(ImageRepository* repository, QObject* parent)
     : QObject(parent)
     , m_repository(repository)
@@ -32,37 +51,20 @@ QImage ThumbnailCache::thumbnail(const ImageRecord& image, const QSize& size)
     if (auto* cached = m_memoryCache.object(image.id))
         return *cached;
 
-    if (image.width > 0 && image.height > 0 && image.width < size.width() && image.height < size.height()) {
-        QImage original(image.absolutePath);
-        if (!original.isNull()) {
-            m_memoryCache.insert(image.id, new QImage(original), 1);
-            return original;
-        }
-    }
+    QImage thumbnail = loadOriginalIfSmaller(image, size);
+    if (!thumbnail.isNull())
+        return thumbnail;
 
-    if (image.thumbnailReady && QFile::exists(image.thumbnailPath)) {
-        QImage disk(image.thumbnailPath);
-        if (!disk.isNull()) {
-            m_memoryCache.insert(image.id, new QImage(disk), 1);
-            return disk;
-        }
-    }
+    thumbnail = loadDiskThumbnail(image);
+    if (!thumbnail.isNull())
+        return thumbnail;
 
-    const QString path = diskPathFor(image);
-    if (QFile::exists(path)) {
-        QImage disk(path);
-        if (!disk.isNull()) {
-            m_memoryCache.insert(image.id, new QImage(disk), 1);
-            if (m_repository)
-                m_repository->updateThumbnail(image.id, path, disk.width(), disk.height());
-            return disk;
-        }
-    }
+    thumbnail = loadGeneratedThumbnail(image);
+    if (!thumbnail.isNull())
+        return thumbnail;
 
     scheduleGeneration(image, size);
-    QImage placeholder(size, QImage::Format_ARGB32_Premultiplied);
-    placeholder.fill(QColor(48, 48, 48, 40));
-    return placeholder;
+    return placeholderThumbnail(size);
 }
 
 void ThumbnailCache::clearMemory()
@@ -70,6 +72,56 @@ void ThumbnailCache::clearMemory()
     ++m_generation;
     m_pending.clear();
     m_memoryCache.clear();
+}
+
+void ThumbnailCache::cacheImage(int imageId, const QImage& image)
+{
+    m_memoryCache.insert(imageId, new QImage(image), 1);
+}
+
+QImage ThumbnailCache::loadOriginalIfSmaller(const ImageRecord& image, const QSize& size)
+{
+    if (image.width <= 0 || image.height <= 0 || image.width >= size.width() || image.height >= size.height())
+        return {};
+
+    QImage original(image.absolutePath);
+    if (!original.isNull())
+        cacheImage(image.id, original);
+    return original;
+}
+
+QImage ThumbnailCache::loadDiskThumbnail(const ImageRecord& image)
+{
+    if (!image.thumbnailReady || !QFile::exists(image.thumbnailPath))
+        return {};
+
+    QImage disk(image.thumbnailPath);
+    if (!disk.isNull())
+        cacheImage(image.id, disk);
+    return disk;
+}
+
+QImage ThumbnailCache::loadGeneratedThumbnail(const ImageRecord& image)
+{
+    const QString path = diskPathFor(image);
+    if (!QFile::exists(path))
+        return {};
+
+    QImage disk(path);
+    if (disk.isNull())
+        return {};
+
+    cacheImage(image.id, disk);
+    if (m_repository)
+        m_repository->updateThumbnail(image.id, path, disk.width(), disk.height());
+    return disk;
+}
+
+QImage ThumbnailCache::placeholderThumbnail(const QSize& size) const
+{
+    QImage placeholder(size, QImage::Format_ARGB32_Premultiplied);
+    placeholder.fill(QColor(48, 48, 48, 40));
+    return placeholder;
 }
 
 QString ThumbnailCache::diskPathFor(const ImageRecord& image) const
@@ -90,17 +142,7 @@ void ThumbnailCache::scheduleGeneration(const ImageRecord& image, const QSize& s
     auto* repo = m_repository;
 
     [[maybe_unused]] auto future = QtConcurrent::run([this, repo, imageId, sourcePath, outputPath, size, generation]() {
-        QImageReader reader(sourcePath);
-        reader.setAutoTransform(true);
-        QSize scaled = reader.size();
-        if (scaled.isValid())
-            scaled.scale(size, Qt::KeepAspectRatio);
-        reader.setScaledSize(scaled.isValid() ? scaled : size);
-        QImage thumb = reader.read();
-        if (!thumb.isNull()) {
-            QDir().mkpath(QFileInfo(outputPath).absolutePath());
-            thumb.save(outputPath, "PNG");
-        }
+        const QImage thumb = generateThumbnailImage(sourcePath, outputPath, size);
         QMetaObject::invokeMethod(this, [this, repo, imageId, outputPath, thumb, generation]() {
             if (generation != m_generation)
                 return;

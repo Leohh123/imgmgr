@@ -22,6 +22,11 @@ signals:
     void thumbnailReady(int imageId);
 
 private:
+    void cacheImage(int imageId, const QImage& image);
+    QImage loadOriginalIfSmaller(const ImageRecord& image, const QSize& size);
+    QImage loadDiskThumbnail(const ImageRecord& image);
+    QImage loadGeneratedThumbnail(const ImageRecord& image);
+    QImage placeholderThumbnail(const QSize& size) const;
     QString diskPathFor(const ImageRecord& image) const;
     void scheduleGeneration(const ImageRecord& image, const QSize& size);
 
