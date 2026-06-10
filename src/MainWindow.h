@@ -57,6 +57,10 @@ private:
     bool addRuleAndRecalculate(const RuleRecord& rule);
     void reloadImages(const ImageFilter& filter = {});
     void updateFilterStatus(qint64 elapsedMs);
+    void showScannerProgress(int current, int total, const QString& path);
+    void showRuleEngineProgress(int current, int total);
+    void showIndeterminateProgress(const QString& statusText);
+    void hideProgressWithStatus(const QString& statusText);
     void setupImageColumnMenu();
     void updateImageColumnVisibility();
     void setThumbnailBackgroundPreset(const QColor& color, bool checkerboard);

@@ -373,22 +373,12 @@ void MainWindow::connectScannerSignals(quint64 projectGeneration)
     connect(m_scanner, &ProjectScanner::progress, this, [this, projectGeneration](int current, int total, const QString& path) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
-        m_progress->setVisible(true);
-        if (total <= 0) {
-            m_progress->setRange(0, 0);
-            m_status->setText(QStringLiteral("正在枚举文件，已发现 %1 张图片：%2").arg(current).arg(path));
-        } else {
-            m_progress->setRange(0, total);
-            m_progress->setValue(current);
-            const int percent = total > 0 ? int((100.0 * current) / total) : 0;
-            m_status->setText(QStringLiteral("扫描中：%1 / %2（%3%） %4").arg(current).arg(total).arg(percent).arg(path));
-        }
+        showScannerProgress(current, total, path);
     });
     connect(m_scanner, &ProjectScanner::finished, this, [this, projectGeneration](int count) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
-        m_progress->setVisible(false);
-        m_status->setText(QStringLiteral("扫描完成：%1 张图片").arg(count));
+        hideProgressWithStatus(QStringLiteral("扫描完成：%1 张图片").arg(count));
         reloadImages({});
         refreshStats();
     });
@@ -405,16 +395,12 @@ void MainWindow::connectRuleEngineSignals(quint64 projectGeneration)
     connect(m_ruleEngine, &RuleEngine::progress, this, [this, projectGeneration](int current, int total) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
-        m_progress->setVisible(true);
-        m_progress->setRange(0, total);
-        m_progress->setValue(current);
-        m_status->setText(QStringLiteral("规则重算中"));
+        showRuleEngineProgress(current, total);
     });
     connect(m_ruleEngine, &RuleEngine::finished, this, [this, projectGeneration] {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
-        m_progress->setVisible(false);
-        m_status->setText(QStringLiteral("规则重算完成"));
+        hideProgressWithStatus(QStringLiteral("规则重算完成"));
         reloadImages(m_filter->filter());
         m_rulePanel->reload();
         refreshStats();
@@ -566,6 +552,50 @@ void MainWindow::updateFilterStatus(qint64 elapsedMs)
         .arg(elapsedMs));
 }
 
+void MainWindow::showScannerProgress(int current, int total, const QString& path)
+{
+    if (!m_progress || !m_status)
+        return;
+    m_progress->setVisible(true);
+    if (total <= 0) {
+        m_progress->setRange(0, 0);
+        m_status->setText(QStringLiteral("正在枚举文件，已发现 %1 张图片：%2").arg(current).arg(path));
+        return;
+    }
+
+    m_progress->setRange(0, total);
+    m_progress->setValue(current);
+    const int percent = int((100.0 * current) / total);
+    m_status->setText(QStringLiteral("扫描中：%1 / %2（%3%） %4").arg(current).arg(total).arg(percent).arg(path));
+}
+
+void MainWindow::showRuleEngineProgress(int current, int total)
+{
+    if (!m_progress || !m_status)
+        return;
+    m_progress->setVisible(true);
+    m_progress->setRange(0, total);
+    m_progress->setValue(current);
+    m_status->setText(QStringLiteral("规则重算中"));
+}
+
+void MainWindow::showIndeterminateProgress(const QString& statusText)
+{
+    if (!m_progress || !m_status)
+        return;
+    m_progress->setVisible(true);
+    m_progress->setRange(0, 0);
+    m_status->setText(statusText);
+}
+
+void MainWindow::hideProgressWithStatus(const QString& statusText)
+{
+    if (m_progress)
+        m_progress->setVisible(false);
+    if (m_status)
+        m_status->setText(statusText);
+}
+
 void MainWindow::scanResourceDirectory()
 {
     if (!m_database.db().isOpen()) {
@@ -586,9 +616,7 @@ void MainWindow::scanResourceDirectory()
             QStringLiteral("为保证资源目录完全只读，项目数据库和 .project_cache 缩略图缓存必须保存在资源目录之外。\n\n请把项目 .db 文件放到其他目录后再扫描。"));
         return;
     }
-    m_progress->setVisible(true);
-    m_progress->setRange(0, 0);
-    m_status->setText(QStringLiteral("准备扫描：%1").arg(dir));
+    showIndeterminateProgress(QStringLiteral("准备扫描：%1").arg(dir));
     m_scanner->scan(dir);
 }
 
