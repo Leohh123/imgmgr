@@ -261,6 +261,7 @@ void MainWindow::setProject(const QString& dbPath)
     }
     m_projectDir = QFileInfo(dbPath).absolutePath();
     ++m_projectGeneration;
+    invalidateRuleExplanationRules();
     m_images.setDatabase(m_database.db());
     m_rules.setDatabase(m_database.db());
 
@@ -434,6 +435,7 @@ void MainWindow::deleteSelectedRule(const RuleRecord& rule)
         QMessageBox::critical(this, QStringLiteral("删除规则失败"), m_rules.lastError());
         return;
     }
+    invalidateRuleExplanationRules();
     recalculateRules();
 }
 
@@ -607,6 +609,7 @@ bool MainWindow::applyImportedRules(const QVector<RuleRecord>& rules)
         return false;
     }
 
+    invalidateRuleExplanationRules();
     clearSelectedRule(true);
     reloadRulePanel();
     recalculateRules();
@@ -631,8 +634,10 @@ bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
 
 bool MainWindow::saveUpdatedRule(const RuleRecord& rule)
 {
-    if (m_rules.updateRule(rule))
+    if (m_rules.updateRule(rule)) {
+        invalidateRuleExplanationRules();
         return true;
+    }
     showRuleSaveFailure();
     return false;
 }
@@ -727,6 +732,21 @@ void MainWindow::showProgressFailure(const QString& title, const QString& error)
     QMessageBox::critical(this, title, error);
 }
 
+const QVector<RuleRecord>& MainWindow::ruleExplanationRules()
+{
+    if (m_ruleExplanationRulesDirty) {
+        m_ruleExplanationRules = m_rules.fetchRules(false);
+        m_ruleExplanationRulesDirty = false;
+    }
+    return m_ruleExplanationRules;
+}
+
+void MainWindow::invalidateRuleExplanationRules()
+{
+    m_ruleExplanationRules.clear();
+    m_ruleExplanationRulesDirty = true;
+}
+
 void MainWindow::scanResourceDirectory()
 {
     if (!ensureProjectForScanning())
@@ -776,6 +796,7 @@ bool MainWindow::addRuleAndRecalculate(const RuleRecord& rule)
         showRuleSaveFailure();
         return false;
     }
+    invalidateRuleExplanationRules();
     reloadRulePanel();
     recalculateRules();
     return true;
@@ -805,8 +826,7 @@ void MainWindow::showImage(const QModelIndex& current)
     const ImageRecord image = m_imageModel->imageAt(current.row());
     m_preview->setImage(image);
     const QVector<int> matches = m_ruleEngine ? m_ruleEngine->matchedRulesForImage(image.id) : QVector<int>();
-    const QVector<RuleRecord> rules = m_rules.fetchRules(false);
-    m_explain->setText(RuleExplanationBuilder::build(image, matches, rules));
+    m_explain->setText(RuleExplanationBuilder::build(image, matches, ruleExplanationRules()));
 }
 
 void MainWindow::refreshStats()

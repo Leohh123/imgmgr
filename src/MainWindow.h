@@ -43,11 +43,19 @@ private slots:
     void importRulesFromJson();
 
 private:
+    // UI setup
     void buildUi();
     QWidget* createLeftPane(QSplitter* splitter, QButtonGroup** listBackgroundGroup);
     QTabWidget* createDetailTabs(QSplitter* splitter);
     void setupStatusBar();
     void connectFilterPanelSignals(QButtonGroup* listBackgroundGroup);
+    void setupProjectMenu();
+    void setupImageColumnMenu();
+    void updateImageColumnVisibility();
+    void setThumbnailBackgroundPreset(const QColor& color, bool checkerboard);
+    void applyThumbnailBackgroundColor();
+
+    // Project lifecycle
     void setProject(const QString& dbPath);
     void resetProjectComponents();
     void createProjectComponents();
@@ -56,10 +64,12 @@ private:
     void removeRulePanelTab();
     void installRulePanelTab();
     void connectProjectSignals();
-    void connectRulePanelSignals();
-    void connectScannerSignals(quint64 projectGeneration);
-    void connectRuleEngineSignals(quint64 projectGeneration);
     bool isCurrentProjectGeneration(quint64 projectGeneration) const;
+    bool hasOpenProject();
+    bool ensureProjectForScanning();
+
+    // Rule workflow
+    void connectRulePanelSignals();
     void applySelectedRuleFilter(const RuleRecord& rule);
     void selectRuleForFilter(const RuleRecord& rule);
     void clearSelectedRule(bool clearFilterBinding);
@@ -68,8 +78,6 @@ private:
     void toggleSelectedRuleEnabled(const RuleRecord& selectedRule);
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
-    bool hasOpenProject();
-    bool ensureProjectForScanning();
     bool confirmReplaceRules(int ruleCount);
     bool applyImportedRules(const QVector<RuleRecord>& rules);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
@@ -77,6 +85,10 @@ private:
     bool addRuleAndRecalculate(const RuleRecord& rule);
     void reloadRulePanel();
     void showRuleSaveFailure();
+
+    // Refresh and status
+    void connectScannerSignals(quint64 projectGeneration);
+    void connectRuleEngineSignals(quint64 projectGeneration);
     void reloadImages(const ImageFilter& filter = {});
     void reloadImagesAndStats(const ImageFilter& filter);
     void reloadAfterRuleRecalculation();
@@ -86,11 +98,8 @@ private:
     void showIndeterminateProgress(const QString& statusText);
     void hideProgressWithStatus(const QString& statusText);
     void showProgressFailure(const QString& title, const QString& error);
-    void setupProjectMenu();
-    void setupImageColumnMenu();
-    void updateImageColumnVisibility();
-    void setThumbnailBackgroundPreset(const QColor& color, bool checkerboard);
-    void applyThumbnailBackgroundColor();
+    const QVector<RuleRecord>& ruleExplanationRules();
+    void invalidateRuleExplanationRules();
     void refreshStats();
     void showImage(const QModelIndex& current);
 
@@ -119,5 +128,7 @@ private:
     bool m_thumbnailCheckerboardBackground = true;
     QString m_projectDir;
     quint64 m_projectGeneration = 0;
+    QVector<RuleRecord> m_ruleExplanationRules;
+    bool m_ruleExplanationRulesDirty = true;
     RuleRecord m_selectedRule;
 };
