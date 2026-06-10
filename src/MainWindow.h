@@ -66,6 +66,7 @@ private:
     void showRuleEngineProgress(int current, int total);
     void showIndeterminateProgress(const QString& statusText);
     void hideProgressWithStatus(const QString& statusText);
+    void showProgressFailure(const QString& title, const QString& error);
     void setupImageColumnMenu();
     void updateImageColumnVisibility();
     void setThumbnailBackgroundPreset(const QColor& color, bool checkerboard);

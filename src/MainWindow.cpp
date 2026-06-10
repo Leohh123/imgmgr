@@ -393,8 +393,7 @@ void MainWindow::connectScannerSignals(quint64 projectGeneration)
     connect(m_scanner, &ProjectScanner::failed, this, [this, projectGeneration](const QString& error) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
-        m_progress->setVisible(false);
-        QMessageBox::critical(this, QStringLiteral("扫描失败"), error);
+        showProgressFailure(QStringLiteral("扫描失败"), error);
     });
 }
 
@@ -414,8 +413,7 @@ void MainWindow::connectRuleEngineSignals(quint64 projectGeneration)
     connect(m_ruleEngine, &RuleEngine::failed, this, [this, projectGeneration](const QString& error) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
-        m_progress->setVisible(false);
-        QMessageBox::critical(this, QStringLiteral("规则重算失败"), error);
+        showProgressFailure(QStringLiteral("规则重算失败"), error);
     });
 }
 
@@ -613,6 +611,13 @@ void MainWindow::hideProgressWithStatus(const QString& statusText)
         m_progress->setVisible(false);
     if (m_status)
         m_status->setText(statusText);
+}
+
+void MainWindow::showProgressFailure(const QString& title, const QString& error)
+{
+    if (m_progress)
+        m_progress->setVisible(false);
+    QMessageBox::critical(this, title, error);
 }
 
 void MainWindow::scanResourceDirectory()
