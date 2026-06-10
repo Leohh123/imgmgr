@@ -21,7 +21,6 @@ public:
     QString lastError() const { return m_lastError; }
 
 private:
-    ImageStatus statusForMatches(int matchCount, bool hasConflict, const QVector<int>& matchedRuleIds, const QHash<int, int>& parentById) const;
     QSqlDatabase m_db;
     mutable QString m_lastError;
 };

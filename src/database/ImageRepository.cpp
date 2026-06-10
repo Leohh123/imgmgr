@@ -114,6 +114,39 @@ ImageRecord imageRecordFromQuery(const QSqlQuery& q)
     return r;
 }
 
+ImageStatus statusForMatches(int matchCount, bool hasConflict, const QVector<int>& matchedRuleIds, const QHash<int, int>& parentById)
+{
+    if (matchCount == 0)
+        return ImageStatus::Unclassified;
+    if (hasConflict)
+        return ImageStatus::Conflict;
+    for (int i = 0; i < matchedRuleIds.size(); ++i) {
+        for (int j = i + 1; j < matchedRuleIds.size(); ++j) {
+            const int a = matchedRuleIds.at(i);
+            const int b = matchedRuleIds.at(j);
+            if (!RuleUtils::isAncestorRule(parentById, a, b) && !RuleUtils::isAncestorRule(parentById, b, a))
+                return ImageStatus::MultiMatch;
+        }
+    }
+    return ImageStatus::Classified;
+}
+
+ImageStatus imageStatusFromQuery(const QSqlQuery& q, const QHash<int, int>& parentById)
+{
+    return statusForMatches(
+        q.value("match_count").toInt(),
+        q.value("has_conflict").toInt() != 0,
+        parseRuleIds(q.value("matched_rule_ids").toString()),
+        parentById);
+}
+
+ImageRecord imageRecordWithStatus(const QSqlQuery& q, const QHash<int, int>& parentById)
+{
+    ImageRecord record = imageRecordFromQuery(q);
+    record.status = imageStatusFromQuery(q, parentById);
+    return record;
+}
+
 QString imageColumnForTarget(const QString& matchTarget)
 {
     if (matchTarget == RuleUtils::relativePathTarget()) return QStringLiteral("i.relative_path");
@@ -255,11 +288,7 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
         return out;
     }
     while (q.next()) {
-        ImageRecord r = imageRecordFromQuery(q);
-        r.status = statusForMatches(r.matchCount,
-            q.value("has_conflict").toInt() != 0,
-            parseRuleIds(q.value("matched_rule_ids").toString()),
-            parentById);
+        ImageRecord r = imageRecordWithStatus(q, parentById);
         if (!statusAllowed(filter, r.status))
             continue;
         out << r;
@@ -298,12 +327,7 @@ ImageRecord ImageRepository::fetchImage(int imageId) const
     if (!q.next())
         return {};
 
-    ImageRecord r = imageRecordFromQuery(q);
-    r.status = statusForMatches(r.matchCount,
-        q.value("has_conflict").toInt() != 0,
-        parseRuleIds(q.value("matched_rule_ids").toString()),
-        parentById);
-    return r;
+    return imageRecordWithStatus(q, parentById);
 }
 
 bool ImageRepository::updateThumbnail(int imageId, const QString& thumbnailPath, int width, int height)
@@ -325,20 +349,9 @@ bool ImageRepository::updateThumbnail(int imageId, const QString& thumbnailPath,
 int ImageRepository::imageCount() const
 {
     QSqlQuery q("SELECT COUNT(*) FROM images", m_db);
-    return q.next() ? q.value(0).toInt() : 0;
-}
-
-ImageStatus ImageRepository::statusForMatches(int matchCount, bool hasConflict, const QVector<int>& matchedRuleIds, const QHash<int, int>& parentById) const
-{
-    if (matchCount == 0) return ImageStatus::Unclassified;
-    if (hasConflict) return ImageStatus::Conflict;
-    for (int i = 0; i < matchedRuleIds.size(); ++i) {
-        for (int j = i + 1; j < matchedRuleIds.size(); ++j) {
-            const int a = matchedRuleIds.at(i);
-            const int b = matchedRuleIds.at(j);
-            if (!RuleUtils::isAncestorRule(parentById, a, b) && !RuleUtils::isAncestorRule(parentById, b, a))
-                return ImageStatus::MultiMatch;
-        }
+    if (!q.next()) {
+        m_lastError = q.lastError().text();
+        return 0;
     }
-    return ImageStatus::Classified;
+    return q.value(0).toInt();
 }
