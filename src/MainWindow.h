@@ -20,8 +20,12 @@ class QAction;
 class QLabel;
 class QMenu;
 class QProgressBar;
+class QButtonGroup;
+class QSplitter;
 class QTableView;
 class QTextEdit;
+class QTabWidget;
+class QWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -40,6 +44,10 @@ private slots:
 
 private:
     void buildUi();
+    QWidget* createLeftPane(QSplitter* splitter, QButtonGroup** listBackgroundGroup);
+    QTabWidget* createDetailTabs(QSplitter* splitter);
+    void setupStatusBar();
+    void connectFilterPanelSignals(QButtonGroup* listBackgroundGroup);
     void setProject(const QString& dbPath);
     void resetProjectComponents();
     void createProjectComponents();

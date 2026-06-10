@@ -90,15 +90,31 @@ void MainWindow::buildUi()
     setupImageColumnMenu();
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
+    QButtonGroup* listBackgroundGroup = nullptr;
+    createLeftPane(splitter, &listBackgroundGroup);
+    createDetailTabs(splitter);
+
+    splitter->setStretchFactor(0, 3);
+    splitter->setStretchFactor(1, 2);
+    setCentralWidget(splitter);
+
+    setupStatusBar();
+    connectFilterPanelSignals(listBackgroundGroup);
+}
+
+QWidget* MainWindow::createLeftPane(QSplitter* splitter, QButtonGroup** listBackgroundGroup)
+{
     auto* left = new QWidget(splitter);
     auto* leftLayout = new QVBoxLayout(left);
 
     auto* listBackgroundLayout = new QHBoxLayout;
     listBackgroundLayout->addWidget(new QLabel(QStringLiteral("图片列表背景"), left));
-    auto* listBackgroundGroup = new QButtonGroup(left);
-    UiUtils::addBackgroundPresetRadios(listBackgroundLayout, listBackgroundGroup, left);
+    auto* backgroundGroup = new QButtonGroup(left);
+    UiUtils::addBackgroundPresetRadios(listBackgroundLayout, backgroundGroup, left);
     listBackgroundLayout->addStretch();
     leftLayout->addLayout(listBackgroundLayout);
+    if (listBackgroundGroup)
+        *listBackgroundGroup = backgroundGroup;
 
     m_table = new QTableView(left);
     m_table->setAlternatingRowColors(true);
@@ -112,7 +128,11 @@ void MainWindow::buildUi()
 
     m_filter = new FilterPanel(left);
     leftLayout->addWidget(m_filter);
+    return left;
+}
 
+QTabWidget* MainWindow::createDetailTabs(QSplitter* splitter)
+{
     auto* tabs = new QTabWidget(splitter);
     m_preview = new ImagePreviewWidget(tabs);
     m_stats = new QTextEdit(tabs);
@@ -123,18 +143,21 @@ void MainWindow::buildUi()
     tabs->addTab(new QWidget(tabs), QStringLiteral("规则树"));
     tabs->addTab(m_explain, QStringLiteral("命中解释"));
     tabs->addTab(m_stats, QStringLiteral("统计"));
+    return tabs;
+}
 
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
-    setCentralWidget(splitter);
-
+void MainWindow::setupStatusBar()
+{
     m_status = new QLabel(QStringLiteral("未打开项目"), this);
     m_progress = new QProgressBar(this);
     m_progress->setMaximumWidth(240);
     m_progress->setVisible(false);
     statusBar()->addWidget(m_status, 1);
     statusBar()->addPermanentWidget(m_progress);
+}
 
+void MainWindow::connectFilterPanelSignals(QButtonGroup* listBackgroundGroup)
+{
     connect(m_filter, &FilterPanel::filterRequested, this, [this](const ImageFilter& f) {
         RuleValidationService::ValidationError error;
         if (!RuleValidationService::validateFilterPattern(f, &error)) {
@@ -148,10 +171,12 @@ void MainWindow::buildUi()
     });
     connect(m_filter, &FilterPanel::addTopRuleRequested, this, &MainWindow::saveRule);
     connect(m_filter, &FilterPanel::addChildRuleRequested, this, &MainWindow::saveChildRule);
-    connect(listBackgroundGroup, &QButtonGroup::idClicked, this, [this](int id) {
-        const UiUtils::BackgroundPreset preset = UiUtils::backgroundPresetForId(id);
-        setThumbnailBackgroundPreset(preset.color, preset.checkerboard);
-    });
+    if (listBackgroundGroup) {
+        connect(listBackgroundGroup, &QButtonGroup::idClicked, this, [this](int id) {
+            const UiUtils::BackgroundPreset preset = UiUtils::backgroundPresetForId(id);
+            setThumbnailBackgroundPreset(preset.color, preset.checkerboard);
+        });
+    }
 }
 
 void MainWindow::setupProjectMenu()
