@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "utils/FileIoUtils.h"
 #include "utils/ImageTableUtils.h"
 #include "utils/PaintUtils.h"
 #include "utils/ProjectFileDialogs.h"
@@ -18,7 +19,6 @@
 #include <QButtonGroup>
 #include <QDir>
 #include <QDialog>
-#include <QFile>
 #include <QFileInfo>
 #include <QHeaderView>
 #include <QLabel>
@@ -463,12 +463,11 @@ void MainWindow::exportRulesToJson()
     const QVector<RuleRecord> rules = m_rules.fetchRules(false);
     const QJsonDocument document = RuleJsonService::buildExportDocument(rules);
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        QMessageBox::critical(this, QStringLiteral("导出失败"), file.errorString());
+    QString error;
+    if (!FileIoUtils::writeAll(path, document.toJson(QJsonDocument::Indented), &error)) {
+        QMessageBox::critical(this, QStringLiteral("导出失败"), error);
         return;
     }
-    file.write(document.toJson(QJsonDocument::Indented));
     QMessageBox::information(this, QStringLiteral("导出完成"), QStringLiteral("已导出 %1 条规则。").arg(rules.size()));
 }
 
@@ -483,15 +482,15 @@ void MainWindow::importRulesFromJson()
     if (path.isEmpty())
         return;
 
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        QMessageBox::critical(this, QStringLiteral("导入失败"), file.errorString());
+    QString error;
+    QByteArray json;
+    if (!FileIoUtils::readAll(path, &json, &error)) {
+        QMessageBox::critical(this, QStringLiteral("导入失败"), error);
         return;
     }
 
-    QString error;
     QVector<RuleRecord> rules;
-    if (!RuleJsonService::parseImportDocument(file.readAll(), &rules, &error)) {
+    if (!RuleJsonService::parseImportDocument(json, &rules, &error)) {
         QMessageBox::critical(this, QStringLiteral("导入失败"), error);
         return;
     }

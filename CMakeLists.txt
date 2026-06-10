@@ -46,6 +46,8 @@ qt_add_executable(imgmgr
     src/widgets/RulePanel.cpp
     src/widgets/RuleEditDialog.h
     src/widgets/RuleEditDialog.cpp
+    src/utils/FileIoUtils.h
+    src/utils/FileIoUtils.cpp
     src/utils/HashUtils.h
     src/utils/HashUtils.cpp
     src/utils/ImageUtils.h
