@@ -1,5 +1,6 @@
 #include "database/ImageRepository.h"
 
+#include "database/SqlUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QHash>
@@ -51,7 +52,7 @@ QVector<int> descendantRuleIds(QSqlDatabase db, int ruleId)
         QSqlQuery q(db);
         q.prepare("SELECT id FROM rules WHERE parent_id=?");
         q.addBindValue(parentId);
-        if (!q.exec())
+        if (!SqlUtils::exec(&q, nullptr))
             continue;
         while (q.next()) {
             const int childId = q.value(0).toInt();
@@ -85,7 +86,7 @@ QHash<int, int> loadRuleParents(QSqlDatabase db)
 {
     QHash<int, int> parentById;
     QSqlQuery rulesQuery(db);
-    if (rulesQuery.exec("SELECT id, parent_id FROM rules")) {
+    if (SqlUtils::exec(&rulesQuery, QStringLiteral("SELECT id, parent_id FROM rules"), nullptr)) {
         while (rulesQuery.next())
             parentById.insert(rulesQuery.value(0).toInt(), rulesQuery.value(1).toInt());
     }
@@ -259,8 +260,7 @@ bool ImageRepository::upsertImages(const QVector<ImageRecord>& records)
         q.addBindValue(r.imageFormat);
         q.addBindValue(now);
         q.addBindValue(now);
-        if (!q.exec()) {
-            m_lastError = q.lastError().text();
+        if (!SqlUtils::exec(&q, &m_lastError)) {
             m_db.rollback();
             return false;
         }
@@ -283,8 +283,7 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
         q.addBindValue(bind);
 
     QVector<ImageRecord> out;
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!SqlUtils::exec(&q, &m_lastError)) {
         return out;
     }
     while (q.next()) {
@@ -320,8 +319,7 @@ ImageRecord ImageRepository::fetchImage(int imageId) const
         "FROM images i LEFT JOIN image_rule_matches m ON m.image_id=i.id "
         "WHERE i.id=? GROUP BY i.id");
     q.addBindValue(imageId);
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!SqlUtils::exec(&q, &m_lastError)) {
         return {};
     }
     if (!q.next())
@@ -339,8 +337,7 @@ bool ImageRepository::updateThumbnail(int imageId, const QString& thumbnailPath,
     q.addBindValue(thumbnailPath);
     q.addBindValue(QDateTime::currentSecsSinceEpoch());
     q.addBindValue(imageId);
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!SqlUtils::exec(&q, &m_lastError)) {
         return false;
     }
     return true;
@@ -348,7 +345,9 @@ bool ImageRepository::updateThumbnail(int imageId, const QString& thumbnailPath,
 
 int ImageRepository::imageCount() const
 {
-    QSqlQuery q("SELECT COUNT(*) FROM images", m_db);
+    QSqlQuery q(m_db);
+    if (!SqlUtils::exec(&q, QStringLiteral("SELECT COUNT(*) FROM images"), &m_lastError))
+        return 0;
     if (!q.next()) {
         m_lastError = q.lastError().text();
         return 0;

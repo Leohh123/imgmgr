@@ -1,5 +1,7 @@
 #include "database/DatabaseManager.h"
 
+#include "database/SqlUtils.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QSqlError>
@@ -45,24 +47,6 @@ bool DatabaseManager::initialize()
     return initializeSchema(&q)
         && runMigrations(&q)
         && backfillDerivedFields(&q);
-}
-
-bool DatabaseManager::execSql(QSqlQuery* query, const QString& sql)
-{
-    if (query->exec(sql))
-        return true;
-
-    m_lastError = query->lastError().text();
-    return false;
-}
-
-bool DatabaseManager::runStatements(QSqlQuery* query, const QStringList& statements)
-{
-    for (const QString& sql : statements) {
-        if (!execSql(query, sql))
-            return false;
-    }
-    return true;
 }
 
 bool DatabaseManager::initializeSchema(QSqlQuery* query)
@@ -138,7 +122,7 @@ bool DatabaseManager::initializeSchema(QSqlQuery* query)
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_rules_parent ON rules(parent_id)")
     };
 
-    return runStatements(query, statements);
+    return SqlUtils::runStatements(query, statements, &m_lastError);
 }
 
 bool DatabaseManager::runMigrations(QSqlQuery* query)
@@ -159,9 +143,10 @@ bool DatabaseManager::runMigrations(QSqlQuery* query)
 
 bool DatabaseManager::backfillDerivedFields(QSqlQuery* query)
 {
-    return execSql(query,
+    return SqlUtils::exec(query,
         QStringLiteral("UPDATE images SET file_stem=substr(file_name, 1, length(file_name) - length(extension) - 1) "
-                       "WHERE (file_stem IS NULL OR file_stem='') AND extension IS NOT NULL AND extension != ''"));
+                       "WHERE (file_stem IS NULL OR file_stem='') AND extension IS NOT NULL AND extension != ''"),
+        &m_lastError);
 }
 
 void DatabaseManager::close()

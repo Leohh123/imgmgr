@@ -2,7 +2,6 @@
 
 #include <QSqlDatabase>
 #include <QString>
-#include <QStringList>
 
 class QSqlQuery;
 
@@ -19,8 +18,6 @@ public:
     QString lastError() const { return m_lastError; }
 
 private:
-    bool execSql(QSqlQuery* query, const QString& sql);
-    bool runStatements(QSqlQuery* query, const QStringList& statements);
     bool initializeSchema(QSqlQuery* query);
     bool runMigrations(QSqlQuery* query);
     bool backfillDerivedFields(QSqlQuery* query);

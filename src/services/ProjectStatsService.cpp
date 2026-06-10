@@ -1,6 +1,7 @@
 #include "services/ProjectStatsService.h"
 
 #include "database/ImageRepository.h"
+#include "database/SqlUtils.h"
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -9,7 +10,8 @@ namespace {
 int scalarInt(const QSqlDatabase& db, const QString& sql)
 {
     QSqlQuery query(db);
-    query.exec(sql);
+    if (!SqlUtils::exec(&query, sql, nullptr))
+        return 0;
     return query.next() ? query.value(0).toInt() : 0;
 }
 

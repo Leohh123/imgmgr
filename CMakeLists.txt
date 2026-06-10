@@ -20,6 +20,8 @@ qt_add_executable(imgmgr
     src/database/ImageRepository.cpp
     src/database/RuleRepository.h
     src/database/RuleRepository.cpp
+    src/database/SqlUtils.h
+    src/database/SqlUtils.cpp
     src/models/ImageListModel.h
     src/models/ImageListModel.cpp
     src/models/RuleTreeModel.h

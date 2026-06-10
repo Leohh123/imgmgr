@@ -1,5 +1,6 @@
 #include "services/RuleEngine.h"
 
+#include "database/SqlUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QDateTime>
@@ -143,7 +144,8 @@ QVector<int> RuleEngine::matchedRulesForImage(int imageId) const
     QSqlQuery q(m_images->database());
     q.prepare("SELECT rule_id FROM image_rule_matches WHERE image_id=? ORDER BY rule_id");
     q.addBindValue(imageId);
-    q.exec();
+    if (!SqlUtils::exec(&q, nullptr))
+        return ids;
     while (q.next())
         ids << q.value(0).toInt();
     return ids;
@@ -167,9 +169,10 @@ void RuleEngine::recalculate()
         return;
     }
     QSqlQuery clear(db);
-    if (!clear.exec("DELETE FROM image_rule_matches")) {
+    QString queryError;
+    if (!SqlUtils::exec(&clear, QStringLiteral("DELETE FROM image_rule_matches"), &queryError)) {
         db.rollback();
-        emit failed(clear.lastError().text());
+        emit failed(queryError);
         return;
     }
 
@@ -184,9 +187,9 @@ void RuleEngine::recalculate()
             insert.addBindValue(id);
             insert.addBindValue(conflictRules.contains(id) ? 1 : 0);
             insert.addBindValue(now);
-            if (!insert.exec()) {
+            if (!SqlUtils::exec(&insert, &queryError)) {
                 db.rollback();
-                emit failed(insert.lastError().text());
+                emit failed(queryError);
                 return;
             }
         }
