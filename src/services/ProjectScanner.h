@@ -19,6 +19,8 @@ signals:
     void failed(const QString& error);
 
 private:
+    void finishScan(const QVector<ImageRecord>& records);
+
     ImageRepository* m_repository = nullptr;
     bool m_running = false;
 };

@@ -66,6 +66,27 @@ void publishProgress(
             emit scanner->progress(current, total, path);
     }, Qt::QueuedConnection);
 }
+
+QVector<ImageRecord> scanImages(const QString& resourceDir, const QPointer<ProjectScanner>& scanner)
+{
+    publishProgress(scanner, 0, 0, QStringLiteral("开始枚举"));
+    const QVector<QString> files = enumerateImageFiles(resourceDir, [scanner](int discovered, const QString& fileName) {
+        publishProgress(scanner, discovered, 0, fileName);
+    });
+    publishProgress(scanner, 0, files.size(), QStringLiteral("读取图片元数据"));
+
+    QVector<ImageRecord> records;
+    records.reserve(files.size());
+    QDir root(resourceDir);
+    for (int i = 0; i < files.size(); ++i) {
+        const ImageRecord record = readImageMetadata(files.at(i), root);
+        records << record;
+        if (i == 0 || i % 25 == 0 || i + 1 == files.size())
+            publishProgress(scanner, i + 1, files.size(), record.relativePath);
+    }
+    publishProgress(scanner, files.size(), files.size(), QString());
+    return records;
+}
 }
 
 ProjectScanner::ProjectScanner(ImageRepository* repository, QObject* parent)
@@ -91,34 +112,23 @@ void ProjectScanner::scan(const QString& resourceDir)
     connect(watcher, &QFutureWatcher<QVector<ImageRecord>>::finished, this, [this, watcher]() {
         const QVector<ImageRecord> records = watcher->result();
         watcher->deleteLater();
-        if (!m_repository->upsertImages(records)) {
-            m_running = false;
-            emit failed(m_repository->lastError());
-            return;
-        }
-        m_running = false;
-        emit finished(records.size());
+        finishScan(records);
     });
 
     QPointer<ProjectScanner> scanner(this);
     auto future = QtConcurrent::run([scanner, resourceDir]() {
-        publishProgress(scanner, 0, 0, QStringLiteral("开始枚举"));
-        const QVector<QString> files = enumerateImageFiles(resourceDir, [scanner](int discovered, const QString& fileName) {
-            publishProgress(scanner, discovered, 0, fileName);
-        });
-        publishProgress(scanner, 0, files.size(), QStringLiteral("读取图片元数据"));
-
-        QVector<ImageRecord> records;
-        records.reserve(files.size());
-        QDir root(resourceDir);
-        for (int i = 0; i < files.size(); ++i) {
-            const ImageRecord r = readImageMetadata(files.at(i), root);
-            records << r;
-            if (i == 0 || i % 25 == 0 || i + 1 == files.size())
-                publishProgress(scanner, i + 1, files.size(), r.relativePath);
-        }
-        publishProgress(scanner, files.size(), files.size(), QString());
-        return records;
+        return scanImages(resourceDir, scanner);
     });
     watcher->setFuture(future);
+}
+
+void ProjectScanner::finishScan(const QVector<ImageRecord>& records)
+{
+    if (!m_repository->upsertImages(records)) {
+        m_running = false;
+        emit failed(m_repository->lastError());
+        return;
+    }
+    m_running = false;
+    emit finished(records.size());
 }
