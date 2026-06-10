@@ -42,6 +42,31 @@ bool DatabaseManager::initialize()
 {
     auto database = db();
     QSqlQuery q(database);
+    return initializeSchema(&q)
+        && runMigrations(&q)
+        && backfillDerivedFields(&q);
+}
+
+bool DatabaseManager::execSql(QSqlQuery* query, const QString& sql)
+{
+    if (query->exec(sql))
+        return true;
+
+    m_lastError = query->lastError().text();
+    return false;
+}
+
+bool DatabaseManager::runStatements(QSqlQuery* query, const QStringList& statements)
+{
+    for (const QString& sql : statements) {
+        if (!execSql(query, sql))
+            return false;
+    }
+    return true;
+}
+
+bool DatabaseManager::initializeSchema(QSqlQuery* query)
+{
     const QStringList statements = {
         QStringLiteral("PRAGMA journal_mode=WAL"),
         QStringLiteral("PRAGMA synchronous=NORMAL"),
@@ -113,29 +138,30 @@ bool DatabaseManager::initialize()
         QStringLiteral("CREATE INDEX IF NOT EXISTS idx_rules_parent ON rules(parent_id)")
     };
 
-    for (const QString& sql : statements) {
-        if (!q.exec(sql)) {
-            m_lastError = q.lastError().text();
-            return false;
-        }
-    }
+    return runStatements(query, statements);
+}
+
+bool DatabaseManager::runMigrations(QSqlQuery* query)
+{
     const QStringList migrations = {
         QStringLiteral("ALTER TABLE images ADD COLUMN file_stem TEXT"),
         QStringLiteral("ALTER TABLE rules ADD COLUMN case_sensitive INTEGER DEFAULT 0"),
         QStringLiteral("ALTER TABLE rules ADD COLUMN whole_match INTEGER DEFAULT 1")
     };
     for (const QString& sql : migrations) {
-        if (!q.exec(sql) && !isDuplicateColumnError(q.lastError())) {
-            m_lastError = q.lastError().text();
+        if (!query->exec(sql) && !isDuplicateColumnError(query->lastError())) {
+            m_lastError = query->lastError().text();
             return false;
         }
     }
-    if (!q.exec(QStringLiteral("UPDATE images SET file_stem=substr(file_name, 1, length(file_name) - length(extension) - 1) "
-                               "WHERE (file_stem IS NULL OR file_stem='') AND extension IS NOT NULL AND extension != ''"))) {
-        m_lastError = q.lastError().text();
-        return false;
-    }
     return true;
+}
+
+bool DatabaseManager::backfillDerivedFields(QSqlQuery* query)
+{
+    return execSql(query,
+        QStringLiteral("UPDATE images SET file_stem=substr(file_name, 1, length(file_name) - length(extension) - 1) "
+                       "WHERE (file_stem IS NULL OR file_stem='') AND extension IS NOT NULL AND extension != ''"));
 }
 
 void DatabaseManager::close()

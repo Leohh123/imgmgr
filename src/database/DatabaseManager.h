@@ -2,6 +2,9 @@
 
 #include <QSqlDatabase>
 #include <QString>
+#include <QStringList>
+
+class QSqlQuery;
 
 class DatabaseManager {
 public:
@@ -16,6 +19,12 @@ public:
     QString lastError() const { return m_lastError; }
 
 private:
+    bool execSql(QSqlQuery* query, const QString& sql);
+    bool runStatements(QSqlQuery* query, const QStringList& statements);
+    bool initializeSchema(QSqlQuery* query);
+    bool runMigrations(QSqlQuery* query);
+    bool backfillDerivedFields(QSqlQuery* query);
+
     QString m_connectionName;
     QString m_dbPath;
     QString m_lastError;
