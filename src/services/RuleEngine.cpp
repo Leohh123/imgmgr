@@ -25,6 +25,11 @@ struct CompiledRule {
     }
 };
 
+struct RuleLookup {
+    QHash<int, RuleRecord> byId;
+    QHash<int, int> parentById;
+};
+
 QVector<CompiledRule> compileRules(const QVector<RuleRecord>& rules)
 {
     QVector<CompiledRule> compiled;
@@ -36,6 +41,74 @@ QVector<CompiledRule> compileRules(const QVector<RuleRecord>& rules)
         };
     }
     return compiled;
+}
+
+RuleLookup buildRuleLookup(const QVector<RuleRecord>& rules)
+{
+    RuleLookup lookup;
+    for (const RuleRecord& rule : rules) {
+        lookup.byId.insert(rule.id, rule);
+        lookup.parentById.insert(rule.id, rule.parentId);
+    }
+    return lookup;
+}
+
+QVector<int> matchedRuleIds(const ImageRecord& image, const QVector<CompiledRule>& rules)
+{
+    QVector<int> matched;
+    for (const CompiledRule& rule : rules) {
+        if (rule.matches(image))
+            matched << rule.rule.id;
+    }
+    return matched;
+}
+
+QSet<int> matchedRuleSet(const QVector<int>& matched)
+{
+    QSet<int> matchedSet;
+    for (int id : matched)
+        matchedSet.insert(id);
+    return matchedSet;
+}
+
+void addMissingAncestorConflicts(const QVector<int>& matched, const RuleLookup& lookup, QSet<int>* conflicts)
+{
+    const QSet<int> matchedSet = matchedRuleSet(matched);
+    for (int id : matched) {
+        int parent = lookup.parentById.value(id, 0);
+        while (parent != 0) {
+            if (lookup.byId.contains(parent) && !matchedSet.contains(parent)) {
+                conflicts->insert(id);
+                break;
+            }
+            parent = lookup.parentById.value(parent, 0);
+        }
+    }
+}
+
+void addSiblingConflicts(const QVector<int>& matched, const RuleLookup& lookup, QSet<int>* conflicts)
+{
+    for (int a = 0; a < matched.size(); ++a) {
+        for (int b = a + 1; b < matched.size(); ++b) {
+            const auto ruleA = lookup.byId.value(matched[a]);
+            const auto ruleB = lookup.byId.value(matched[b]);
+            const bool allowed = ruleA.allowConflict || ruleB.allowConflict
+                || RuleUtils::isAncestorRule(lookup.parentById, ruleA.id, ruleB.id)
+                || RuleUtils::isAncestorRule(lookup.parentById, ruleB.id, ruleA.id);
+            if (!allowed) {
+                conflicts->insert(ruleA.id);
+                conflicts->insert(ruleB.id);
+            }
+        }
+    }
+}
+
+QSet<int> conflictRuleIds(const QVector<int>& matched, const RuleLookup& lookup)
+{
+    QSet<int> conflicts;
+    addMissingAncestorConflicts(matched, lookup, &conflicts);
+    addSiblingConflicts(matched, lookup, &conflicts);
+    return conflicts;
 }
 }
 
@@ -50,25 +123,16 @@ bool RuleEngine::isAncestorRule(int possibleAncestorId, int ruleId) const
 {
     if (!m_rules || possibleAncestorId == ruleId)
         return false;
-    const auto rules = m_rules->fetchRules(false);
-    QHash<int, int> parentById;
-    for (const auto& rule : rules)
-        parentById.insert(rule.id, rule.parentId);
-    return RuleUtils::isAncestorRule(parentById, possibleAncestorId, ruleId);
+    const RuleLookup lookup = buildRuleLookup(m_rules->fetchRules(false));
+    return RuleUtils::isAncestorRule(lookup.parentById, possibleAncestorId, ruleId);
 }
 
 bool RuleEngine::isConflictBetweenRules(int ruleA, int ruleB) const
 {
     if (!m_rules || ruleA == ruleB)
         return false;
-    const auto rules = m_rules->fetchRules(false);
-    QHash<int, RuleRecord> byId;
-    QHash<int, int> parentById;
-    for (const auto& rule : rules) {
-        byId.insert(rule.id, rule);
-        parentById.insert(rule.id, rule.parentId);
-    }
-    return RuleUtils::isConflictBetweenRules(byId, parentById, ruleA, ruleB);
+    const RuleLookup lookup = buildRuleLookup(m_rules->fetchRules(false));
+    return RuleUtils::isConflictBetweenRules(lookup.byId, lookup.parentById, ruleA, ruleB);
 }
 
 QVector<int> RuleEngine::matchedRulesForImage(int imageId) const
@@ -96,12 +160,7 @@ void RuleEngine::recalculate()
     const auto images = m_images->fetchAllImages();
     const auto rules = m_rules->fetchRules(true);
     const QVector<CompiledRule> compiledRules = compileRules(rules);
-    QHash<int, RuleRecord> ruleById;
-    QHash<int, int> parentById;
-    for (const auto& r : rules) {
-        ruleById.insert(r.id, r);
-        parentById.insert(r.id, r.parentId);
-    }
+    const RuleLookup ruleLookup = buildRuleLookup(rules);
 
     if (!db.transaction()) {
         emit failed(db.lastError().text());
@@ -118,39 +177,8 @@ void RuleEngine::recalculate()
     insert.prepare("INSERT INTO image_rule_matches (image_id, rule_id, is_conflict, created_at) VALUES (?,?,?,?)");
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     for (int i = 0; i < images.size(); ++i) {
-        QVector<int> matched;
-        for (const CompiledRule& compiledRule : compiledRules) {
-            if (compiledRule.matches(images.at(i)))
-                matched << compiledRule.rule.id;
-        }
-        QSet<int> matchedSet;
-        for (int id : matched)
-            matchedSet.insert(id);
-
-        QSet<int> conflictRules;
-        for (int id : matched) {
-            int parent = parentById.value(id, 0);
-            while (parent != 0) {
-                if (ruleById.contains(parent) && !matchedSet.contains(parent)) {
-                    conflictRules.insert(id);
-                    break;
-                }
-                parent = parentById.value(parent, 0);
-            }
-        }
-        for (int a = 0; a < matched.size(); ++a) {
-            for (int b = a + 1; b < matched.size(); ++b) {
-                const auto ra = ruleById.value(matched[a]);
-                const auto rb = ruleById.value(matched[b]);
-                const bool allowed = ra.allowConflict || rb.allowConflict
-                    || RuleUtils::isAncestorRule(parentById, ra.id, rb.id)
-                    || RuleUtils::isAncestorRule(parentById, rb.id, ra.id);
-                if (!allowed) {
-                    conflictRules.insert(ra.id);
-                    conflictRules.insert(rb.id);
-                }
-            }
-        }
+        const QVector<int> matched = matchedRuleIds(images.at(i), compiledRules);
+        const QSet<int> conflictRules = conflictRuleIds(matched, ruleLookup);
         for (int id : matched) {
             insert.addBindValue(images.at(i).id);
             insert.addBindValue(id);
