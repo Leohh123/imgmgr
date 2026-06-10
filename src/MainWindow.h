@@ -52,6 +52,7 @@ private:
     void resetProjectComponents();
     void createProjectComponents();
     void bindProjectModels();
+    void installRulePanelTab();
     void connectProjectSignals();
     void connectRulePanelSignals();
     void connectScannerSignals(quint64 projectGeneration);
@@ -64,6 +65,8 @@ private:
     void toggleSelectedRuleEnabled(const RuleRecord& selectedRule);
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
+    bool confirmReplaceRules(int ruleCount);
+    bool applyImportedRules(const QVector<RuleRecord>& rules);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
     bool addRuleAndRecalculate(const RuleRecord& rule);
     void reloadImages(const ImageFilter& filter = {});
@@ -96,6 +99,7 @@ private:
     FilterPanel* m_filter = nullptr;
     ImagePreviewWidget* m_preview = nullptr;
     RulePanel* m_rulePanel = nullptr;
+    QTabWidget* m_detailTabs = nullptr;
     QLabel* m_status = nullptr;
     QProgressBar* m_progress = nullptr;
     QTextEdit* m_stats = nullptr;

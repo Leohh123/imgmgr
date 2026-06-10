@@ -133,17 +133,17 @@ QWidget* MainWindow::createLeftPane(QSplitter* splitter, QButtonGroup** listBack
 
 QTabWidget* MainWindow::createDetailTabs(QSplitter* splitter)
 {
-    auto* tabs = new QTabWidget(splitter);
-    m_preview = new ImagePreviewWidget(tabs);
-    m_stats = new QTextEdit(tabs);
+    m_detailTabs = new QTabWidget(splitter);
+    m_preview = new ImagePreviewWidget(m_detailTabs);
+    m_stats = new QTextEdit(m_detailTabs);
     m_stats->setReadOnly(true);
-    m_explain = new QTextEdit(tabs);
+    m_explain = new QTextEdit(m_detailTabs);
     m_explain->setReadOnly(true);
-    tabs->addTab(m_preview, QStringLiteral("图片预览"));
-    tabs->addTab(new QWidget(tabs), QStringLiteral("规则树"));
-    tabs->addTab(m_explain, QStringLiteral("命中解释"));
-    tabs->addTab(m_stats, QStringLiteral("统计"));
-    return tabs;
+    m_detailTabs->addTab(m_preview, QStringLiteral("图片预览"));
+    m_detailTabs->addTab(new QWidget(m_detailTabs), QStringLiteral("规则树"));
+    m_detailTabs->addTab(m_explain, QStringLiteral("命中解释"));
+    m_detailTabs->addTab(m_stats, QStringLiteral("统计"));
+    return m_detailTabs;
 }
 
 void MainWindow::setupStatusBar()
@@ -308,14 +308,26 @@ void MainWindow::bindProjectModels()
     updateImageColumnVisibility();
     reloadImages({});
     clearSelectedRule(false);
-
-    auto* tabs = findChild<QTabWidget*>();
-    if (tabs && !m_rulePanel) {
-        m_rulePanel = new RulePanel(m_ruleModel, tabs);
-        tabs->removeTab(1);
-        tabs->insertTab(1, m_rulePanel, QStringLiteral("规则树"));
-    }
+    installRulePanelTab();
     m_rulePanel->reload();
+}
+
+void MainWindow::installRulePanelTab()
+{
+    if (!m_detailTabs)
+        return;
+
+    const QString ruleTabTitle = QStringLiteral("规则树");
+    for (int i = 0; i < m_detailTabs->count(); ++i) {
+        if (m_detailTabs->tabText(i) == ruleTabTitle) {
+            m_detailTabs->removeTab(i);
+            break;
+        }
+    }
+
+    const int ruleTabIndex = qMin(1, m_detailTabs->count());
+    m_rulePanel = new RulePanel(m_ruleModel, m_detailTabs);
+    m_detailTabs->insertTab(ruleTabIndex, m_rulePanel, ruleTabTitle);
 }
 
 void MainWindow::connectProjectSignals()
@@ -522,24 +534,36 @@ void MainWindow::importRulesFromJson()
         return;
     }
 
-    const auto answer = QMessageBox::warning(this,
-        QStringLiteral("覆盖当前规则"),
-        QStringLiteral("导入会删除当前所有规则、排除规则和规则命中记录，并导入 JSON 中的 %1 条规则。是否继续？").arg(rules.size()),
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
-    if (answer != QMessageBox::Yes)
+    if (!confirmReplaceRules(rules.size()))
         return;
 
+    if (!applyImportedRules(rules))
+        return;
+    QMessageBox::information(this, QStringLiteral("导入完成"), QStringLiteral("已导入 %1 条规则。").arg(rules.size()));
+}
+
+bool MainWindow::confirmReplaceRules(int ruleCount)
+{
+    const auto answer = QMessageBox::warning(this,
+        QStringLiteral("覆盖当前规则"),
+        QStringLiteral("导入会删除当前所有规则、排除规则和规则命中记录，并导入 JSON 中的 %1 条规则。是否继续？").arg(ruleCount),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+    return answer == QMessageBox::Yes;
+}
+
+bool MainWindow::applyImportedRules(const QVector<RuleRecord>& rules)
+{
     if (!m_rules.replaceRules(rules)) {
         QMessageBox::critical(this, QStringLiteral("导入失败"), m_rules.lastError());
-        return;
+        return false;
     }
 
     clearSelectedRule(true);
     if (m_rulePanel)
         m_rulePanel->reload();
     recalculateRules();
-    QMessageBox::information(this, QStringLiteral("导入完成"), QStringLiteral("已导入 %1 条规则。").arg(rules.size()));
+    return true;
 }
 
 bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
