@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMetaObject>
+#include <QPointer>
 #include <QThread>
 #include <QtConcurrent>
 
@@ -79,6 +80,20 @@ void ThumbnailCache::cacheImage(int imageId, const QImage& image)
     m_memoryCache.insert(imageId, new QImage(image), 1);
 }
 
+void ThumbnailCache::applyGeneratedThumbnail(int imageId, const QString& outputPath, const QImage& thumbnail, quint64 generation)
+{
+    if (generation != m_generation)
+        return;
+
+    m_pending.remove(imageId);
+    if (!thumbnail.isNull()) {
+        cacheImage(imageId, thumbnail);
+        if (m_repository)
+            m_repository->updateThumbnail(imageId, outputPath, thumbnail.width(), thumbnail.height());
+    }
+    emit thumbnailReady(imageId);
+}
+
 QImage ThumbnailCache::loadOriginalIfSmaller(const ImageRecord& image, const QSize& size)
 {
     if (image.width <= 0 || image.height <= 0 || image.width >= size.width() || image.height >= size.height())
@@ -139,20 +154,17 @@ void ThumbnailCache::scheduleGeneration(const ImageRecord& image, const QSize& s
     const QString sourcePath = image.absolutePath;
     const int imageId = image.id;
     const quint64 generation = m_generation;
-    auto* repo = m_repository;
+    QPointer<ThumbnailCache> cache(this);
 
-    [[maybe_unused]] auto future = QtConcurrent::run([this, repo, imageId, sourcePath, outputPath, size, generation]() {
+    [[maybe_unused]] auto future = QtConcurrent::run([cache, imageId, sourcePath, outputPath, size, generation]() {
         const QImage thumb = generateThumbnailImage(sourcePath, outputPath, size);
-        QMetaObject::invokeMethod(this, [this, repo, imageId, outputPath, thumb, generation]() {
-            if (generation != m_generation)
+        if (!cache)
+            return;
+
+        QMetaObject::invokeMethod(cache, [cache, imageId, outputPath, thumb, generation]() {
+            if (!cache)
                 return;
-            m_pending.remove(imageId);
-            if (!thumb.isNull()) {
-                m_memoryCache.insert(imageId, new QImage(thumb), 1);
-                if (repo)
-                    repo->updateThumbnail(imageId, outputPath, thumb.width(), thumb.height());
-            }
-            emit thumbnailReady(imageId);
+            cache->applyGeneratedThumbnail(imageId, outputPath, thumb, generation);
         }, Qt::QueuedConnection);
     });
 }

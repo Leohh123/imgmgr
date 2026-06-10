@@ -23,6 +23,7 @@ signals:
 
 private:
     void cacheImage(int imageId, const QImage& image);
+    void applyGeneratedThumbnail(int imageId, const QString& outputPath, const QImage& thumbnail, quint64 generation);
     QImage loadOriginalIfSmaller(const ImageRecord& image, const QSize& size);
     QImage loadDiskThumbnail(const ImageRecord& image);
     QImage loadGeneratedThumbnail(const ImageRecord& image);
