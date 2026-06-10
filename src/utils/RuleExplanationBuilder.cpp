@@ -7,6 +7,44 @@
 
 namespace RuleExplanationBuilder {
 
+namespace {
+QString cachedRulePath(int ruleId, const QHash<int, RuleRecord>& rulesById, QHash<int, QString>* pathByRuleId)
+{
+    if (!pathByRuleId)
+        return rulePath(ruleId, rulesById);
+
+    const auto it = pathByRuleId->constFind(ruleId);
+    if (it != pathByRuleId->constEnd())
+        return it.value();
+
+    const QString path = rulePath(ruleId, rulesById);
+    pathByRuleId->insert(ruleId, path);
+    return path;
+}
+
+QString cachedConflictReason(
+    int ruleA,
+    int ruleB,
+    const QHash<int, RuleRecord>& rulesById,
+    const QHash<int, int>& parentById,
+    QHash<int, QString>* pathByRuleId)
+{
+    const RuleRecord a = rulesById.value(ruleA);
+    const RuleRecord b = rulesById.value(ruleB);
+    if (a.allowConflict || b.allowConflict)
+        return QStringLiteral("无冲突：至少一个规则允许冲突。");
+    if (RuleUtils::isAncestorRule(parentById, ruleA, ruleB))
+        return QStringLiteral("无冲突：%1 是 %2 的祖先规则。")
+            .arg(cachedRulePath(ruleA, rulesById, pathByRuleId),
+                 cachedRulePath(ruleB, rulesById, pathByRuleId));
+    if (RuleUtils::isAncestorRule(parentById, ruleB, ruleA))
+        return QStringLiteral("无冲突：%1 是 %2 的祖先规则。")
+            .arg(cachedRulePath(ruleB, rulesById, pathByRuleId),
+                 cachedRulePath(ruleA, rulesById, pathByRuleId));
+    return QStringLiteral("存在冲突：两个规则不在同一祖先链上，且未设置允许冲突。");
+}
+}
+
 QString rulePath(int ruleId, const QHash<int, RuleRecord>& rulesById)
 {
     QStringList parts;
@@ -42,6 +80,7 @@ QString build(const ImageRecord& image, const QVector<int>& matches, const QVect
         rulesById.insert(rule.id, rule);
         parentById.insert(rule.id, rule.parentId);
     }
+    QHash<int, QString> pathByRuleId;
 
     QStringList lines;
     lines << QStringLiteral("当前图片：") << image.relativePath << QString();
@@ -52,7 +91,7 @@ QString build(const ImageRecord& image, const QVector<int>& matches, const QVect
         for (int id : matches) {
             const RuleRecord rule = rulesById.value(id);
             lines << QStringLiteral("- %1  [%2: %3 | 目标: %4%5]")
-                .arg(rulePath(id, rulesById),
+                .arg(cachedRulePath(id, rulesById, &pathByRuleId),
                      rule.ruleType,
                      rule.pattern,
                      rule.matchTarget,
@@ -74,8 +113,8 @@ QString build(const ImageRecord& image, const QVector<int>& matches, const QVect
             if (ancestor.enabled && !matchedSet.contains(parent)) {
                 ancestorConflictLines << QStringLiteral("- %1 命中了子规则“%2”，但没有命中启用的祖先规则“%3”。")
                     .arg(image.relativePath,
-                         rulePath(id, rulesById),
-                         rulePath(parent, rulesById));
+                         cachedRulePath(id, rulesById, &pathByRuleId),
+                         cachedRulePath(parent, rulesById, &pathByRuleId));
                 break;
             }
             parent = ancestor.parentId;
@@ -87,9 +126,9 @@ QString build(const ImageRecord& image, const QVector<int>& matches, const QVect
             const int a = matches.at(i);
             const int b = matches.at(j);
             const QString pairText = QStringLiteral("- %1  <->  %2\n  %3")
-                .arg(rulePath(a, rulesById),
-                     rulePath(b, rulesById),
-                     conflictReason(a, b, rulesById, parentById));
+                .arg(cachedRulePath(a, rulesById, &pathByRuleId),
+                     cachedRulePath(b, rulesById, &pathByRuleId),
+                     cachedConflictReason(a, b, rulesById, parentById, &pathByRuleId));
             if (RuleUtils::isConflictBetweenRules(rulesById, parentById, a, b))
                 conflictLines << pairText;
             else
