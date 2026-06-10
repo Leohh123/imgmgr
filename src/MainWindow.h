@@ -52,6 +52,8 @@ private:
     void resetProjectComponents();
     void createProjectComponents();
     void bindProjectModels();
+    void clearProjectViews();
+    void removeRulePanelTab();
     void installRulePanelTab();
     void connectProjectSignals();
     void connectRulePanelSignals();

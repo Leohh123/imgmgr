@@ -227,6 +227,20 @@ void ImagePreviewWidget::setImage(const ImageRecord& image)
     refresh();
 }
 
+void ImagePreviewWidget::clear()
+{
+    m_record = {};
+    m_source = {};
+    m_view = {};
+    m_renderedSize = {};
+    if (m_imageLabel)
+        m_imageLabel->clear();
+    if (m_infoLabel)
+        m_infoLabel->clear();
+    if (m_pixelLabel)
+        m_pixelLabel->clear();
+}
+
 void ImagePreviewWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);

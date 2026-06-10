@@ -276,6 +276,8 @@ void MainWindow::setProject(const QString& dbPath)
 
 void MainWindow::resetProjectComponents()
 {
+    clearProjectViews();
+    removeRulePanelTab();
     delete m_rulePanel;
     m_rulePanel = nullptr;
     delete m_thumbnails;
@@ -303,13 +305,37 @@ void MainWindow::createProjectComponents()
 void MainWindow::bindProjectModels()
 {
     m_table->setModel(m_imageModel);
-    m_table->setItemDelegateForColumn(ImageListModel::ThumbnailColumn, new ThumbnailDelegate(m_table));
+    if (!m_table->itemDelegateForColumn(ImageListModel::ThumbnailColumn))
+        m_table->setItemDelegateForColumn(ImageListModel::ThumbnailColumn, new ThumbnailDelegate(m_table));
     ImageTableUtils::configureColumns(m_table);
     updateImageColumnVisibility();
     reloadImages({});
     clearSelectedRule(false);
     installRulePanelTab();
     m_rulePanel->reload();
+}
+
+void MainWindow::clearProjectViews()
+{
+    if (m_table) {
+        m_table->setModel(nullptr);
+    }
+    if (m_preview)
+        m_preview->clear();
+    if (m_explain)
+        m_explain->clear();
+    if (m_stats)
+        m_stats->clear();
+}
+
+void MainWindow::removeRulePanelTab()
+{
+    if (!m_detailTabs || !m_rulePanel)
+        return;
+
+    const int index = m_detailTabs->indexOf(m_rulePanel);
+    if (index >= 0)
+        m_detailTabs->removeTab(index);
 }
 
 void MainWindow::installRulePanelTab()

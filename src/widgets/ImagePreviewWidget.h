@@ -42,6 +42,7 @@ class ImagePreviewWidget : public QWidget {
 public:
     explicit ImagePreviewWidget(QWidget* parent = nullptr);
     void setImage(const ImageRecord& image);
+    void clear();
     void setBackgroundColor(const QColor& color);
     void setBackgroundPreset(const QColor& color, bool checkerboard);
 
