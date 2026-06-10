@@ -53,6 +53,33 @@ void bindRuleTimestamps(QSqlQuery* query, qint64 createdAt, qint64 updatedAt)
     query->addBindValue(createdAt);
     query->addBindValue(updatedAt);
 }
+
+bool execPrepared(QSqlQuery* query, QString* lastError)
+{
+    if (query->exec())
+        return true;
+    *lastError = query->lastError().text();
+    return false;
+}
+
+bool execSql(QSqlQuery* query, const QString& sql, QString* lastError)
+{
+    if (query->exec(sql))
+        return true;
+    *lastError = query->lastError().text();
+    return false;
+}
+
+QString fetchRulesSql(bool enabledOnly)
+{
+    QString sql = QStringLiteral(
+        "SELECT r.*, COUNT(m.image_id) AS match_count, SUM(COALESCE(m.is_conflict,0)) AS conflict_count "
+        "FROM rules r LEFT JOIN image_rule_matches m ON m.rule_id=r.id");
+    if (enabledOnly)
+        sql += QStringLiteral(" WHERE r.enabled=1");
+    sql += QStringLiteral(" GROUP BY r.id ORDER BY r.parent_id, r.priority DESC, r.name");
+    return sql;
+}
 }
 
 RuleRepository::RuleRepository(QSqlDatabase db)
@@ -68,10 +95,8 @@ int RuleRepository::addRule(const RuleRecord& rule)
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     bindRuleFields(&q, rule);
     bindRuleTimestamps(&q, now, now);
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!execPrepared(&q, &m_lastError))
         return 0;
-    }
     return q.lastInsertId().toInt();
 }
 
@@ -82,10 +107,8 @@ bool RuleRepository::updateRule(const RuleRecord& rule)
     bindRuleFields(&q, rule);
     q.addBindValue(QDateTime::currentSecsSinceEpoch());
     q.addBindValue(rule.id);
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!execPrepared(&q, &m_lastError))
         return false;
-    }
     return true;
 }
 
@@ -103,8 +126,7 @@ bool RuleRepository::replaceRules(const QVector<RuleRecord>& rules)
         QStringLiteral("DELETE FROM rules")
     };
     for (const QString& statement : clearStatements) {
-        if (!clear.exec(statement)) {
-            m_lastError = clear.lastError().text();
+        if (!execSql(&clear, statement, &m_lastError)) {
             m_db.rollback();
             return false;
         }
@@ -118,8 +140,7 @@ bool RuleRepository::replaceRules(const QVector<RuleRecord>& rules)
         insert.addBindValue(rule.id);
         bindRuleFields(&insert, rule);
         bindRuleTimestamps(&insert, now, now);
-        if (!insert.exec()) {
-            m_lastError = insert.lastError().text();
+        if (!execPrepared(&insert, &m_lastError)) {
             m_db.rollback();
             return false;
         }
@@ -137,16 +158,16 @@ bool RuleRepository::removeRule(int id)
     QSqlQuery q(m_db);
     q.prepare("DELETE FROM rules WHERE id=?");
     q.addBindValue(id);
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!execPrepared(&q, &m_lastError))
         return false;
-    }
     return true;
 }
 
 bool RuleRepository::removeRuleRecursive(int id)
 {
-    QVector<int> ids = childRuleIdsRecursive(id);
+    QVector<int> ids;
+    if (!collectChildRuleIdsRecursive(id, &ids))
+        return false;
     std::reverse(ids.begin(), ids.end());
     ids.append(id);
     if (!m_db.transaction()) {
@@ -159,14 +180,12 @@ bool RuleRepository::removeRuleRecursive(int id)
     deleteRules.prepare("DELETE FROM rules WHERE id=?");
     for (int ruleId : ids) {
         deleteMatches.addBindValue(ruleId);
-        if (!deleteMatches.exec()) {
-            m_lastError = deleteMatches.lastError().text();
+        if (!execPrepared(&deleteMatches, &m_lastError)) {
             m_db.rollback();
             return false;
         }
         deleteRules.addBindValue(ruleId);
-        if (!deleteRules.exec()) {
-            m_lastError = deleteRules.lastError().text();
+        if (!execPrepared(&deleteRules, &m_lastError)) {
             m_db.rollback();
             return false;
         }
@@ -184,10 +203,8 @@ RuleRecord RuleRepository::fetchRule(int id) const
     q.prepare("SELECT r.*, COUNT(m.image_id) AS match_count, SUM(COALESCE(m.is_conflict,0)) AS conflict_count "
               "FROM rules r LEFT JOIN image_rule_matches m ON m.rule_id=r.id WHERE r.id=? GROUP BY r.id");
     q.addBindValue(id);
-    if (!q.exec()) {
-        m_lastError = q.lastError().text();
+    if (!execPrepared(&q, &m_lastError))
         return {};
-    }
     if (!q.next())
         return {};
 
@@ -196,14 +213,11 @@ RuleRecord RuleRepository::fetchRule(int id) const
 
 QVector<RuleRecord> RuleRepository::fetchRules(bool enabledOnly) const
 {
-    QString sql = "SELECT r.*, COUNT(m.image_id) AS match_count, SUM(COALESCE(m.is_conflict,0)) AS conflict_count "
-                  "FROM rules r LEFT JOIN image_rule_matches m ON m.rule_id=r.id";
-    if (enabledOnly)
-        sql += " WHERE r.enabled=1";
-    sql += " GROUP BY r.id ORDER BY r.parent_id, r.priority DESC, r.name";
-
-    QSqlQuery q(sql, m_db);
     QVector<RuleRecord> rules;
+    QSqlQuery q(m_db);
+    if (!execSql(&q, fetchRulesSql(enabledOnly), &m_lastError))
+        return rules;
+
     while (q.next()) {
         rules << ruleFromQuery(q);
     }
@@ -213,6 +227,12 @@ QVector<RuleRecord> RuleRepository::fetchRules(bool enabledOnly) const
 QVector<int> RuleRepository::childRuleIdsRecursive(int ruleId) const
 {
     QVector<int> result;
+    collectChildRuleIdsRecursive(ruleId, &result);
+    return result;
+}
+
+bool RuleRepository::collectChildRuleIdsRecursive(int ruleId, QVector<int>* result) const
+{
     QQueue<int> queue;
     queue.enqueue(ruleId);
     while (!queue.isEmpty()) {
@@ -220,20 +240,24 @@ QVector<int> RuleRepository::childRuleIdsRecursive(int ruleId) const
         QSqlQuery q(m_db);
         q.prepare("SELECT id FROM rules WHERE parent_id=?");
         q.addBindValue(parent);
-        q.exec();
+        if (!execPrepared(&q, &m_lastError))
+            return false;
         while (q.next()) {
             const int id = q.value(0).toInt();
-            result << id;
+            *result << id;
             queue.enqueue(id);
         }
     }
-    return result;
+    return true;
 }
 
 QHash<int, int> RuleRepository::matchCounts() const
 {
     QHash<int, int> counts;
-    QSqlQuery q("SELECT rule_id, COUNT(*) FROM image_rule_matches GROUP BY rule_id", m_db);
+    QSqlQuery q(m_db);
+    if (!execSql(&q, QStringLiteral("SELECT rule_id, COUNT(*) FROM image_rule_matches GROUP BY rule_id"), &m_lastError))
+        return counts;
+
     while (q.next())
         counts.insert(q.value(0).toInt(), q.value(1).toInt());
     return counts;

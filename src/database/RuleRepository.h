@@ -22,6 +22,8 @@ public:
     QString lastError() const { return m_lastError; }
 
 private:
+    bool collectChildRuleIdsRecursive(int ruleId, QVector<int>* result) const;
+
     QSqlDatabase m_db;
     mutable QString m_lastError;
 };
