@@ -333,39 +333,48 @@ void MainWindow::connectRulePanelSignals()
     connect(m_rulePanel, &RulePanel::ruleSelectionCleared, this, [this] {
         clearSelectedRule(true);
     });
-    connect(m_rulePanel, &RulePanel::editRuleRequested, this, [this](const RuleRecord& selectedRule) {
-        RuleRecord rule = m_rules.fetchRule(selectedRule.id);
-        if (rule.id == 0)
-            return;
-        if (!editRuleWithDialog(rule, QStringLiteral("编辑规则")))
-            return;
-        if (!m_rules.updateRule(rule))
-            QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
-        recalculateRules();
-    });
-    connect(m_rulePanel, &RulePanel::deleteRuleRequested, this, [this](const RuleRecord& rule) {
-        const auto answer = QMessageBox::question(this,
-            QStringLiteral("删除规则"),
-            QStringLiteral("确定删除规则“%1”及其所有子规则吗？").arg(rule.name));
-        if (answer != QMessageBox::Yes)
-            return;
-        if (!m_rules.removeRuleRecursive(rule.id)) {
-            QMessageBox::critical(this, QStringLiteral("删除规则失败"), m_rules.lastError());
-            return;
-        }
-        recalculateRules();
-    });
-    connect(m_rulePanel, &RulePanel::toggleRuleRequested, this, [this](const RuleRecord& selectedRule) {
-        RuleRecord rule = m_rules.fetchRule(selectedRule.id);
-        if (rule.id == 0)
-            return;
-        rule.enabled = !rule.enabled;
-        if (!m_rules.updateRule(rule)) {
-            QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
-            return;
-        }
-        recalculateRules();
-    });
+    connect(m_rulePanel, &RulePanel::editRuleRequested, this, &MainWindow::editSelectedRule);
+    connect(m_rulePanel, &RulePanel::deleteRuleRequested, this, &MainWindow::deleteSelectedRule);
+    connect(m_rulePanel, &RulePanel::toggleRuleRequested, this, &MainWindow::toggleSelectedRuleEnabled);
+}
+
+void MainWindow::editSelectedRule(const RuleRecord& selectedRule)
+{
+    RuleRecord rule = m_rules.fetchRule(selectedRule.id);
+    if (rule.id == 0)
+        return;
+    if (!editRuleWithDialog(rule, QStringLiteral("编辑规则")))
+        return;
+    if (!m_rules.updateRule(rule))
+        QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
+    recalculateRules();
+}
+
+void MainWindow::deleteSelectedRule(const RuleRecord& rule)
+{
+    const auto answer = QMessageBox::question(this,
+        QStringLiteral("删除规则"),
+        QStringLiteral("确定删除规则“%1”及其所有子规则吗？").arg(rule.name));
+    if (answer != QMessageBox::Yes)
+        return;
+    if (!m_rules.removeRuleRecursive(rule.id)) {
+        QMessageBox::critical(this, QStringLiteral("删除规则失败"), m_rules.lastError());
+        return;
+    }
+    recalculateRules();
+}
+
+void MainWindow::toggleSelectedRuleEnabled(const RuleRecord& selectedRule)
+{
+    RuleRecord rule = m_rules.fetchRule(selectedRule.id);
+    if (rule.id == 0)
+        return;
+    rule.enabled = !rule.enabled;
+    if (!m_rules.updateRule(rule)) {
+        QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
+        return;
+    }
+    recalculateRules();
 }
 
 void MainWindow::connectScannerSignals(quint64 projectGeneration)

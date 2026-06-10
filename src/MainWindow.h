@@ -51,6 +51,9 @@ private:
     bool isCurrentProjectGeneration(quint64 projectGeneration) const;
     void selectRuleForFilter(const RuleRecord& rule);
     void clearSelectedRule(bool clearFilterBinding);
+    void editSelectedRule(const RuleRecord& selectedRule);
+    void deleteSelectedRule(const RuleRecord& rule);
+    void toggleSelectedRuleEnabled(const RuleRecord& selectedRule);
     void updateRecentProjectsMenu();
     void addRecentProject(const QString& dbPath);
     bool editRuleWithDialog(RuleRecord& rule, const QString& title);
