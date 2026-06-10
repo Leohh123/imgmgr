@@ -86,18 +86,7 @@ MainWindow::MainWindow(QWidget* parent)
 
 void MainWindow::buildUi()
 {
-    auto* fileMenu = menuBar()->addMenu(QStringLiteral("项目"));
-    fileMenu->addAction(QStringLiteral("新建项目数据库"), this, &MainWindow::createProject);
-    fileMenu->addAction(QStringLiteral("打开项目数据库"), this, &MainWindow::openProject);
-    m_recentProjectsMenu = fileMenu->addMenu(QStringLiteral("最近项目"));
-    updateRecentProjectsMenu();
-    fileMenu->addSeparator();
-    fileMenu->addAction(QStringLiteral("选择资源目录并扫描"), this, &MainWindow::scanResourceDirectory);
-    fileMenu->addAction(QStringLiteral("重算规则命中"), this, &MainWindow::recalculateRules);
-    fileMenu->addSeparator();
-    fileMenu->addAction(QStringLiteral("导出规则为 JSON"), this, &MainWindow::exportRulesToJson);
-    fileMenu->addAction(QStringLiteral("从 JSON 导入规则并覆盖"), this, &MainWindow::importRulesFromJson);
-
+    setupProjectMenu();
     setupImageColumnMenu();
 
     auto* splitter = new QSplitter(Qt::Horizontal, this);
@@ -163,6 +152,21 @@ void MainWindow::buildUi()
         const UiUtils::BackgroundPreset preset = UiUtils::backgroundPresetForId(id);
         setThumbnailBackgroundPreset(preset.color, preset.checkerboard);
     });
+}
+
+void MainWindow::setupProjectMenu()
+{
+    auto* fileMenu = menuBar()->addMenu(QStringLiteral("项目"));
+    fileMenu->addAction(QStringLiteral("新建项目数据库"), this, &MainWindow::createProject);
+    fileMenu->addAction(QStringLiteral("打开项目数据库"), this, &MainWindow::openProject);
+    m_recentProjectsMenu = fileMenu->addMenu(QStringLiteral("最近项目"));
+    updateRecentProjectsMenu();
+    fileMenu->addSeparator();
+    fileMenu->addAction(QStringLiteral("选择资源目录并扫描"), this, &MainWindow::scanResourceDirectory);
+    fileMenu->addAction(QStringLiteral("重算规则命中"), this, &MainWindow::recalculateRules);
+    fileMenu->addSeparator();
+    fileMenu->addAction(QStringLiteral("导出规则为 JSON"), this, &MainWindow::exportRulesToJson);
+    fileMenu->addAction(QStringLiteral("从 JSON 导入规则并覆盖"), this, &MainWindow::importRulesFromJson);
 }
 
 void MainWindow::setupImageColumnMenu()
