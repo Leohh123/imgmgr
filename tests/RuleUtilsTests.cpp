@@ -1,4 +1,5 @@
 #include "services/RuleJsonService.h"
+#include "services/RuleValidationService.h"
 #include "utils/RuleExplanationBuilder.h"
 #include "utils/RuleUtils.h"
 
@@ -15,6 +16,9 @@ private slots:
     void importRejectsDuplicateRuleIds();
     void explanationShowsNoConflictForSingleMatch();
     void explanationShowsSiblingConflictAdvice();
+    void ruleValidationRejectsEmptyNameAndPattern();
+    void ruleValidationRejectsInvalidRegex();
+    void filterValidationOnlyChecksNonEmptyRegex();
 };
 
 void RuleUtilsTests::globMatchingNormalizesPathSeparators()
@@ -163,6 +167,55 @@ void RuleUtilsTests::explanationShowsSiblingConflictAdvice()
     QVERIFY(explanation.contains(QStringLiteral("主角  <->  敌人")));
     QVERIFY(explanation.contains(QStringLiteral("两个规则不在同一祖先链上")));
     QVERIFY(explanation.contains(QStringLiteral("建议处理方式：")));
+}
+
+void RuleUtilsTests::ruleValidationRejectsEmptyNameAndPattern()
+{
+    RuleValidationService::ValidationError error;
+
+    RuleRecord missingName;
+    missingName.pattern = QStringLiteral("hero*");
+    QVERIFY(!RuleValidationService::validateRuleForSave(missingName, &error));
+    QCOMPARE(error.title, QStringLiteral("规则名称为空"));
+
+    RuleRecord missingPattern;
+    missingPattern.name = QStringLiteral("主角");
+    QVERIFY(!RuleValidationService::validateRuleForSave(missingPattern, &error));
+    QCOMPARE(error.title, QStringLiteral("规则为空"));
+}
+
+void RuleUtilsTests::ruleValidationRejectsInvalidRegex()
+{
+    RuleRecord rule;
+    rule.name = QStringLiteral("无效正则");
+    rule.ruleType = RuleUtils::regexRuleType();
+    rule.pattern = QStringLiteral("(");
+
+    RuleValidationService::ValidationError error;
+    QVERIFY(!RuleValidationService::validateRuleForSave(rule, &error));
+    QCOMPARE(error.title, QStringLiteral("正则无效"));
+    QVERIFY(!error.message.isEmpty());
+}
+
+void RuleUtilsTests::filterValidationOnlyChecksNonEmptyRegex()
+{
+    RuleValidationService::ValidationError error;
+
+    ImageFilter globFilter;
+    globFilter.ruleType = RuleUtils::globRuleType();
+    globFilter.pattern = QStringLiteral("(");
+    QVERIFY(RuleValidationService::validateFilterPattern(globFilter, &error));
+
+    ImageFilter emptyRegexFilter;
+    emptyRegexFilter.ruleType = RuleUtils::regexRuleType();
+    emptyRegexFilter.pattern = QStringLiteral("   ");
+    QVERIFY(RuleValidationService::validateFilterPattern(emptyRegexFilter, &error));
+
+    ImageFilter invalidRegexFilter;
+    invalidRegexFilter.ruleType = RuleUtils::regexRuleType();
+    invalidRegexFilter.pattern = QStringLiteral("(");
+    QVERIFY(!RuleValidationService::validateFilterPattern(invalidRegexFilter, &error));
+    QCOMPARE(error.title, QStringLiteral("正则无效"));
 }
 
 QTEST_APPLESS_MAIN(RuleUtilsTests)
