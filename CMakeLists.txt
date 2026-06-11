@@ -8,7 +8,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Concurrent Test)
+
+enable_testing()
 
 qt_add_executable(imgmgr
     src/main.cpp
@@ -73,6 +75,19 @@ qt_add_executable(imgmgr
 
 target_include_directories(imgmgr PRIVATE src)
 target_link_libraries(imgmgr PRIVATE Qt6::Widgets Qt6::Sql Qt6::Concurrent)
+
+qt_add_executable(imgmgr_rule_tests
+    tests/RuleUtilsTests.cpp
+    src/services/RuleJsonService.h
+    src/services/RuleJsonService.cpp
+    src/utils/RuleUtils.h
+    src/utils/RuleUtils.cpp
+    src/types.h
+)
+target_include_directories(imgmgr_rule_tests PRIVATE src)
+target_link_libraries(imgmgr_rule_tests PRIVATE Qt6::Core Qt6::Test)
+set_target_properties(imgmgr_rule_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+add_test(NAME imgmgr_rule_tests COMMAND imgmgr_rule_tests)
 
 if (MSVC)
     target_compile_options(imgmgr PRIVATE /utf-8)

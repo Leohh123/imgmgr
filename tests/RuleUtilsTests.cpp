@@ -1,0 +1,123 @@
+#include "services/RuleJsonService.h"
+#include "utils/RuleUtils.h"
+
+#include <QtTest/QtTest>
+
+class RuleUtilsTests : public QObject {
+    Q_OBJECT
+
+private slots:
+    void globMatchingNormalizesPathSeparators();
+    void regexWholeMatchHonorsCaseSensitivity();
+    void ancestorRulesDoNotConflictWithChildren();
+    void exportImportPreservesRuleTreeParents();
+    void importRejectsDuplicateRuleIds();
+};
+
+void RuleUtilsTests::globMatchingNormalizesPathSeparators()
+{
+    QVERIFY(RuleUtils::targetMatches(
+        QStringLiteral("textures\\wood\\oak.png"),
+        QStringLiteral("textures/wood/*.png"),
+        RuleUtils::globRuleType(),
+        false,
+        true));
+}
+
+void RuleUtilsTests::regexWholeMatchHonorsCaseSensitivity()
+{
+    QVERIFY(RuleUtils::targetMatches(
+        QStringLiteral("Hero_01"),
+        QStringLiteral("hero_\\d+"),
+        RuleUtils::regexRuleType(),
+        false,
+        true));
+
+    QVERIFY(!RuleUtils::targetMatches(
+        QStringLiteral("Hero_01"),
+        QStringLiteral("hero_\\d+"),
+        RuleUtils::regexRuleType(),
+        true,
+        true));
+}
+
+void RuleUtilsTests::ancestorRulesDoNotConflictWithChildren()
+{
+    RuleRecord parent;
+    parent.id = 1;
+    parent.name = QStringLiteral("角色");
+
+    RuleRecord child;
+    child.id = 2;
+    child.parentId = 1;
+    child.name = QStringLiteral("主角");
+
+    QHash<int, RuleRecord> rulesById;
+    rulesById.insert(parent.id, parent);
+    rulesById.insert(child.id, child);
+
+    QHash<int, int> parentById;
+    parentById.insert(parent.id, parent.parentId);
+    parentById.insert(child.id, child.parentId);
+
+    QVERIFY(RuleUtils::isAncestorRule(parentById, parent.id, child.id));
+    QVERIFY(!RuleUtils::isConflictBetweenRules(rulesById, parentById, parent.id, child.id));
+}
+
+void RuleUtilsTests::exportImportPreservesRuleTreeParents()
+{
+    RuleRecord parent;
+    parent.id = 1;
+    parent.name = QStringLiteral("角色");
+    parent.pattern = QStringLiteral("characters/*");
+    parent.matchTarget = RuleUtils::relativePathTarget();
+
+    RuleRecord child;
+    child.id = 2;
+    child.parentId = 1;
+    child.name = QStringLiteral("主角");
+    child.pattern = QStringLiteral("hero_*");
+    child.matchTarget = RuleUtils::fileNameStemTarget();
+    child.priority = 10;
+
+    const QJsonDocument document = RuleJsonService::buildExportDocument({ parent, child });
+
+    QVector<RuleRecord> imported;
+    QString error;
+    QVERIFY2(RuleJsonService::parseImportDocument(document.toJson(), &imported, &error), qPrintable(error));
+    QCOMPARE(imported.size(), 2);
+    QCOMPARE(imported.at(0).id, parent.id);
+    QCOMPARE(imported.at(0).parentId, 0);
+    QCOMPARE(imported.at(1).id, child.id);
+    QCOMPARE(imported.at(1).parentId, parent.id);
+    QCOMPARE(imported.at(1).priority, child.priority);
+}
+
+void RuleUtilsTests::importRejectsDuplicateRuleIds()
+{
+    const QByteArray json = R"([
+        {
+            "id": 1,
+            "name": "A",
+            "rule_type": "glob",
+            "pattern": "a*",
+            "match_target": "filename_stem"
+        },
+        {
+            "id": 1,
+            "name": "B",
+            "rule_type": "glob",
+            "pattern": "b*",
+            "match_target": "filename_stem"
+        }
+    ])";
+
+    QVector<RuleRecord> imported;
+    QString error;
+    QVERIFY(!RuleJsonService::parseImportDocument(json, &imported, &error));
+    QVERIFY(error.contains(QStringLiteral("重复")));
+}
+
+QTEST_APPLESS_MAIN(RuleUtilsTests)
+
+#include "RuleUtilsTests.moc"
