@@ -113,6 +113,29 @@ qt_add_executable(imgmgr_file_io_tests
 )
 configure_imgmgr_test(imgmgr_file_io_tests)
 
+qt_add_executable(imgmgr_hash_tests
+    tests/HashUtilsTests.cpp
+    src/utils/HashUtils.h
+    src/utils/HashUtils.cpp
+)
+configure_imgmgr_test(imgmgr_hash_tests)
+
+qt_add_executable(imgmgr_image_tests
+    tests/ImageUtilsTests.cpp
+    src/utils/ImageUtils.h
+    src/utils/ImageUtils.cpp
+)
+configure_imgmgr_test(imgmgr_image_tests)
+target_link_libraries(imgmgr_image_tests PRIVATE Qt6::Gui)
+
+qt_add_executable(imgmgr_sql_tests
+    tests/SqlUtilsTests.cpp
+    src/database/SqlUtils.h
+    src/database/SqlUtils.cpp
+)
+configure_imgmgr_test(imgmgr_sql_tests)
+target_link_libraries(imgmgr_sql_tests PRIVATE Qt6::Sql)
+
 if (MSVC)
     target_compile_options(imgmgr PRIVATE /utf-8)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
