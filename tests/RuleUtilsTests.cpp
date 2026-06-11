@@ -1,4 +1,5 @@
 #include "services/RuleJsonService.h"
+#include "utils/RuleExplanationBuilder.h"
 #include "utils/RuleUtils.h"
 
 #include <QtTest/QtTest>
@@ -12,6 +13,8 @@ private slots:
     void ancestorRulesDoNotConflictWithChildren();
     void exportImportPreservesRuleTreeParents();
     void importRejectsDuplicateRuleIds();
+    void explanationShowsNoConflictForSingleMatch();
+    void explanationShowsSiblingConflictAdvice();
 };
 
 void RuleUtilsTests::globMatchingNormalizesPathSeparators()
@@ -116,6 +119,50 @@ void RuleUtilsTests::importRejectsDuplicateRuleIds()
     QString error;
     QVERIFY(!RuleJsonService::parseImportDocument(json, &imported, &error));
     QVERIFY(error.contains(QStringLiteral("重复")));
+}
+
+void RuleUtilsTests::explanationShowsNoConflictForSingleMatch()
+{
+    ImageRecord image;
+    image.relativePath = QStringLiteral("characters/hero.png");
+    image.status = ImageStatus::Classified;
+
+    RuleRecord rule;
+    rule.id = 1;
+    rule.name = QStringLiteral("角色");
+    rule.pattern = QStringLiteral("characters/*");
+    rule.matchTarget = RuleUtils::relativePathTarget();
+
+    const QString explanation = RuleExplanationBuilder::build(image, { rule.id }, { rule });
+
+    QVERIFY(explanation.contains(QStringLiteral("当前图片：")));
+    QVERIFY(explanation.contains(QStringLiteral("- 角色  [glob: characters/* | 目标: relative_path]")));
+    QVERIFY(explanation.contains(QStringLiteral("命中规则数量不超过 1")));
+    QVERIFY(!explanation.contains(QStringLiteral("建议处理方式：")));
+}
+
+void RuleUtilsTests::explanationShowsSiblingConflictAdvice()
+{
+    ImageRecord image;
+    image.relativePath = QStringLiteral("characters/hero.png");
+    image.status = ImageStatus::Conflict;
+
+    RuleRecord hero;
+    hero.id = 1;
+    hero.name = QStringLiteral("主角");
+    hero.pattern = QStringLiteral("hero*");
+
+    RuleRecord enemy;
+    enemy.id = 2;
+    enemy.name = QStringLiteral("敌人");
+    enemy.pattern = QStringLiteral("enemy*");
+
+    const QString explanation = RuleExplanationBuilder::build(image, { hero.id, enemy.id }, { hero, enemy });
+
+    QVERIFY(explanation.contains(QStringLiteral("存在冲突的规则对：")));
+    QVERIFY(explanation.contains(QStringLiteral("主角  <->  敌人")));
+    QVERIFY(explanation.contains(QStringLiteral("两个规则不在同一祖先链上")));
+    QVERIFY(explanation.contains(QStringLiteral("建议处理方式：")));
 }
 
 QTEST_APPLESS_MAIN(RuleUtilsTests)

@@ -80,6 +80,8 @@ qt_add_executable(imgmgr_rule_tests
     tests/RuleUtilsTests.cpp
     src/services/RuleJsonService.h
     src/services/RuleJsonService.cpp
+    src/utils/RuleExplanationBuilder.h
+    src/utils/RuleExplanationBuilder.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/types.h
