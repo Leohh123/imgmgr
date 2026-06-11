@@ -89,7 +89,21 @@ qt_add_executable(imgmgr_rule_tests
 target_include_directories(imgmgr_rule_tests PRIVATE src)
 target_link_libraries(imgmgr_rule_tests PRIVATE Qt6::Core Qt6::Test)
 set_target_properties(imgmgr_rule_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+add_custom_command(TARGET imgmgr_rule_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Qt6::Test> $<TARGET_FILE_DIR:imgmgr_rule_tests>)
 add_test(NAME imgmgr_rule_tests COMMAND imgmgr_rule_tests)
+
+qt_add_executable(imgmgr_path_tests
+    tests/ProjectPathServiceTests.cpp
+    src/services/ProjectPathService.h
+    src/services/ProjectPathService.cpp
+)
+target_include_directories(imgmgr_path_tests PRIVATE src)
+target_link_libraries(imgmgr_path_tests PRIVATE Qt6::Core Qt6::Test)
+set_target_properties(imgmgr_path_tests PROPERTIES WIN32_EXECUTABLE FALSE)
+add_custom_command(TARGET imgmgr_path_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Qt6::Test> $<TARGET_FILE_DIR:imgmgr_path_tests>)
+add_test(NAME imgmgr_path_tests COMMAND imgmgr_path_tests)
 
 if (MSVC)
     target_compile_options(imgmgr PRIVATE /utf-8)
