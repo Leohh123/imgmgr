@@ -1,0 +1,179 @@
+#include "database/DatabaseManager.h"
+#include "database/ImageRepository.h"
+#include "database/RuleRepository.h"
+#include "database/SqlUtils.h"
+#include "utils/RuleUtils.h"
+
+#include <QSqlQuery>
+#include <QTemporaryDir>
+#include <QUuid>
+#include <QtTest/QtTest>
+
+class DatabaseRepositoryTests : public QObject {
+    Q_OBJECT
+
+private slots:
+    void databaseInitializeCreatesSchemaAndIsIdempotent();
+    void imageRepositoryUpsertsFetchesAndUpdatesThumbnail();
+    void ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively();
+};
+
+namespace {
+QString uniqueConnectionName()
+{
+    return QStringLiteral("database_repository_test_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
+}
+
+QString temporaryDatabasePath(QTemporaryDir* dir)
+{
+    return dir->filePath(QStringLiteral("project.imgmgr"));
+}
+
+ImageRecord makeImage(const QString& absolutePath, const QString& relativePath, const QString& fileName)
+{
+    ImageRecord image;
+    image.absolutePath = absolutePath;
+    image.relativePath = relativePath;
+    image.fileName = fileName;
+    image.fileStem = QFileInfo(fileName).completeBaseName();
+    image.parentDir = QFileInfo(relativePath).path();
+    image.extension = QFileInfo(fileName).suffix();
+    image.fileSize = 1024;
+    image.modifiedTime = 100;
+    image.width = 64;
+    image.height = 32;
+    image.hasAlpha = true;
+    image.imageFormat = QStringLiteral("png");
+    return image;
+}
+
+RuleRecord makeRule(const QString& name, const QString& pattern, int parentId = 0)
+{
+    RuleRecord rule;
+    rule.parentId = parentId;
+    rule.name = name;
+    rule.pattern = pattern;
+    rule.matchTarget = RuleUtils::fileNameStemTarget();
+    return rule;
+}
+}
+
+void DatabaseRepositoryTests::databaseInitializeCreatesSchemaAndIsIdempotent()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+    QVERIFY2(manager.initialize(), qPrintable(manager.lastError()));
+
+    QSqlQuery query(manager.db());
+    QString error;
+    QVERIFY2(SqlUtils::exec(&query, QStringLiteral(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('images','rules','image_rule_matches') "
+        "ORDER BY name"), &error), qPrintable(error));
+
+    QStringList tables;
+    while (query.next())
+        tables << query.value(0).toString();
+    QCOMPARE(tables, QStringList({ QStringLiteral("image_rule_matches"), QStringLiteral("images"), QStringLiteral("rules") }));
+}
+
+void DatabaseRepositoryTests::imageRepositoryUpsertsFetchesAndUpdatesThumbnail()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    ImageRepository images(manager.db());
+    const ImageRecord original = makeImage(
+        QStringLiteral("D:/assets/characters/hero.png"),
+        QStringLiteral("characters/hero.png"),
+        QStringLiteral("hero.png"));
+    QVERIFY2(images.upsertImages({ original }), qPrintable(images.lastError()));
+    QCOMPARE(images.imageCount(), 1);
+
+    QVector<ImageRecord> fetched = images.fetchAllImages();
+    QCOMPARE(fetched.size(), 1);
+    QCOMPARE(fetched.first().relativePath, original.relativePath);
+    QCOMPARE(fetched.first().fileStem, QStringLiteral("hero"));
+    QCOMPARE(fetched.first().status, ImageStatus::Unclassified);
+    QVERIFY(fetched.first().hasAlpha);
+
+    const int imageId = fetched.first().id;
+    QVERIFY2(images.updateThumbnail(imageId, QStringLiteral("thumbs/hero.png"), 128, 128), qPrintable(images.lastError()));
+    ImageRecord withThumbnail = images.fetchImage(imageId);
+    QVERIFY(withThumbnail.thumbnailReady);
+    QCOMPARE(withThumbnail.thumbnailPath, QStringLiteral("thumbs/hero.png"));
+
+    ImageRecord updated = original;
+    updated.fileSize = original.fileSize + 1;
+    updated.modifiedTime = original.modifiedTime + 1;
+    updated.width = 128;
+    QVERIFY2(images.upsertImages({ updated }), qPrintable(images.lastError()));
+    QCOMPARE(images.imageCount(), 1);
+
+    ImageRecord afterUpdate = images.fetchImage(imageId);
+    QCOMPARE(afterUpdate.width, 128);
+    QVERIFY(!afterUpdate.thumbnailReady);
+}
+
+void DatabaseRepositoryTests::ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    RuleRepository rules(manager.db());
+    const int parentId = rules.addRule(makeRule(QStringLiteral("角色"), QStringLiteral("*")));
+    QVERIFY2(parentId > 0, qPrintable(rules.lastError()));
+    const int childId = rules.addRule(makeRule(QStringLiteral("主角"), QStringLiteral("hero"), parentId));
+    QVERIFY2(childId > 0, qPrintable(rules.lastError()));
+    const int grandchildId = rules.addRule(makeRule(QStringLiteral("主角头像"), QStringLiteral("hero_avatar"), childId));
+    QVERIFY2(grandchildId > 0, qPrintable(rules.lastError()));
+
+    RuleRecord disabled = makeRule(QStringLiteral("禁用规则"), QStringLiteral("disabled"));
+    disabled.enabled = false;
+    const int disabledId = rules.addRule(disabled);
+    QVERIFY2(disabledId > 0, qPrintable(rules.lastError()));
+
+    QCOMPARE(rules.fetchRule(childId).parentId, parentId);
+    QCOMPARE(rules.fetchRules(false).size(), 4);
+    QCOMPARE(rules.fetchRules(true).size(), 3);
+
+    const QVector<int> descendants = rules.childRuleIdsRecursive(parentId);
+    QVERIFY(descendants.contains(childId));
+    QVERIFY(descendants.contains(grandchildId));
+
+    ImageRepository images(manager.db());
+    const ImageRecord image = makeImage(
+        QStringLiteral("D:/assets/characters/hero.png"),
+        QStringLiteral("characters/hero.png"),
+        QStringLiteral("hero.png"));
+    QVERIFY2(images.upsertImages({ image }), qPrintable(images.lastError()));
+    const int imageId = images.fetchAllImages().first().id;
+
+    QSqlQuery insertMatch(manager.db());
+    insertMatch.prepare(QStringLiteral(
+        "INSERT INTO image_rule_matches (image_id, rule_id, is_conflict, created_at) VALUES (?,?,?,0)"));
+    insertMatch.addBindValue(imageId);
+    insertMatch.addBindValue(childId);
+    insertMatch.addBindValue(0);
+    QString error;
+    QVERIFY2(SqlUtils::exec(&insertMatch, &error), qPrintable(error));
+    QCOMPARE(rules.matchCounts().value(childId), 1);
+
+    QVERIFY2(rules.removeRuleRecursive(childId), qPrintable(rules.lastError()));
+    QVERIFY(rules.fetchRule(childId).id == 0);
+    QVERIFY(rules.fetchRule(grandchildId).id == 0);
+    QVERIFY(rules.fetchRule(parentId).id == parentId);
+    QVERIFY(!rules.matchCounts().contains(childId));
+}
+
+QTEST_MAIN(DatabaseRepositoryTests)
+
+#include "DatabaseRepositoryTests.moc"

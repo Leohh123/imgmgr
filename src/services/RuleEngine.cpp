@@ -7,7 +7,6 @@
 #include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QtConcurrent>
 
 namespace {
 struct CompiledRule {
