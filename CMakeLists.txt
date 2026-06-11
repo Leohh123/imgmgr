@@ -172,6 +172,27 @@ qt_add_executable(imgmgr_rule_engine_tests
 configure_imgmgr_test(imgmgr_rule_engine_tests)
 target_link_libraries(imgmgr_rule_engine_tests PRIVATE Qt6::Sql)
 
+qt_add_executable(imgmgr_project_stats_tests
+    tests/ProjectStatsServiceTests.cpp
+    src/services/ProjectStatsService.h
+    src/services/ProjectStatsService.cpp
+    src/services/RuleEngine.h
+    src/services/RuleEngine.cpp
+    src/database/ImageRepository.h
+    src/database/ImageRepository.cpp
+    src/database/RuleRepository.h
+    src/database/RuleRepository.cpp
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/database/SqlUtils.h
+    src/database/SqlUtils.cpp
+    src/utils/RuleUtils.h
+    src/utils/RuleUtils.cpp
+    src/types.h
+)
+configure_imgmgr_test(imgmgr_project_stats_tests)
+target_link_libraries(imgmgr_project_stats_tests PRIVATE Qt6::Sql)
+
 if (MSVC)
     target_compile_options(imgmgr PRIVATE /utf-8)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

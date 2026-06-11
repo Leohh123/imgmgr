@@ -15,7 +15,9 @@ class DatabaseRepositoryTests : public QObject {
 private slots:
     void databaseInitializeCreatesSchemaAndIsIdempotent();
     void imageRepositoryUpsertsFetchesAndUpdatesThumbnail();
+    void imageRepositoryFiltersByPatternStatusAndRule();
     void ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively();
+    void replaceRulesPreservesHierarchyAndRollsBackOnFailure();
 };
 
 namespace {
@@ -120,6 +122,74 @@ void DatabaseRepositoryTests::imageRepositoryUpsertsFetchesAndUpdatesThumbnail()
     QVERIFY(!afterUpdate.thumbnailReady);
 }
 
+void DatabaseRepositoryTests::imageRepositoryFiltersByPatternStatusAndRule()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    ImageRepository images(manager.db());
+    const ImageRecord hero = makeImage(
+        QStringLiteral("D:/assets/characters/hero.png"),
+        QStringLiteral("characters/hero.png"),
+        QStringLiteral("hero.png"));
+    const ImageRecord enemy = makeImage(
+        QStringLiteral("D:/assets/enemies/enemy.png"),
+        QStringLiteral("enemies/enemy.png"),
+        QStringLiteral("enemy.png"));
+    QVERIFY2(images.upsertImages({ hero, enemy }), qPrintable(images.lastError()));
+
+    RuleRepository rules(manager.db());
+    const int heroRuleId = rules.addRule(makeRule(QStringLiteral("主角"), QStringLiteral("hero")));
+    QVERIFY2(heroRuleId > 0, qPrintable(rules.lastError()));
+    const int childRuleId = rules.addRule(makeRule(QStringLiteral("主角头像"), QStringLiteral("hero_avatar"), heroRuleId));
+    QVERIFY2(childRuleId > 0, qPrintable(rules.lastError()));
+
+    const QVector<ImageRecord> allImages = images.fetchAllImages();
+    const int heroImageId = allImages.first().fileStem == QStringLiteral("hero") ? allImages.first().id : allImages.last().id;
+    QSqlQuery insertMatch(manager.db());
+    insertMatch.prepare(QStringLiteral(
+        "INSERT INTO image_rule_matches (image_id, rule_id, is_conflict, created_at) VALUES (?,?,?,0)"));
+    insertMatch.addBindValue(heroImageId);
+    insertMatch.addBindValue(heroRuleId);
+    insertMatch.addBindValue(0);
+    QString error;
+    QVERIFY2(SqlUtils::exec(&insertMatch, &error), qPrintable(error));
+
+    ImageFilter relativePathFilter;
+    relativePathFilter.pattern = QStringLiteral("characters/*");
+    relativePathFilter.matchTarget = RuleUtils::relativePathTarget();
+    QVector<ImageRecord> filtered = images.fetchAllImages(relativePathFilter);
+    QCOMPARE(filtered.size(), 1);
+    QCOMPARE(filtered.first().fileStem, QStringLiteral("hero"));
+
+    ImageFilter classifiedOnly;
+    classifiedOnly.onlyUnclassified = false;
+    classifiedOnly.onlyConflict = false;
+    classifiedOnly.onlyMultiMatch = false;
+    filtered = images.fetchAllImages(classifiedOnly);
+    QCOMPARE(filtered.size(), 1);
+    QCOMPARE(filtered.first().status, ImageStatus::Classified);
+
+    ImageFilter currentRule;
+    currentRule.currentRuleId = heroRuleId;
+    currentRule.onlyCurrentRule = true;
+    filtered = images.fetchAllImages(currentRule);
+    QCOMPARE(filtered.size(), 1);
+    QCOMPARE(filtered.first().id, heroImageId);
+
+    QSqlQuery insertChildMatch(manager.db());
+    insertChildMatch.prepare(QStringLiteral(
+        "INSERT INTO image_rule_matches (image_id, rule_id, is_conflict, created_at) VALUES (?,?,?,0)"));
+    insertChildMatch.addBindValue(heroImageId);
+    insertChildMatch.addBindValue(childRuleId);
+    insertChildMatch.addBindValue(0);
+    QVERIFY2(SqlUtils::exec(&insertChildMatch, &error), qPrintable(error));
+    QVERIFY(images.fetchAllImages(currentRule).isEmpty());
+}
+
 void DatabaseRepositoryTests::ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively()
 {
     QTemporaryDir dir;
@@ -172,6 +242,34 @@ void DatabaseRepositoryTests::ruleRepositoryPersistsHierarchyAndRemovesChildrenR
     QVERIFY(rules.fetchRule(grandchildId).id == 0);
     QVERIFY(rules.fetchRule(parentId).id == parentId);
     QVERIFY(!rules.matchCounts().contains(childId));
+}
+
+void DatabaseRepositoryTests::replaceRulesPreservesHierarchyAndRollsBackOnFailure()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    RuleRepository rules(manager.db());
+    RuleRecord parent = makeRule(QStringLiteral("角色"), QStringLiteral("*"));
+    parent.id = 10;
+    RuleRecord child = makeRule(QStringLiteral("主角"), QStringLiteral("hero"), parent.id);
+    child.id = 11;
+    QVERIFY2(rules.replaceRules({ parent, child }), qPrintable(rules.lastError()));
+
+    QCOMPARE(rules.fetchRules(false).size(), 2);
+    QCOMPARE(rules.fetchRule(child.id).parentId, parent.id);
+
+    RuleRecord duplicate = makeRule(QStringLiteral("重复"), QStringLiteral("dup"));
+    duplicate.id = parent.id;
+    QVERIFY(!rules.replaceRules({ parent, duplicate }));
+
+    const QVector<RuleRecord> afterFailure = rules.fetchRules(false);
+    QCOMPARE(afterFailure.size(), 2);
+    QCOMPARE(rules.fetchRule(parent.id).name, parent.name);
+    QCOMPARE(rules.fetchRule(child.id).parentId, parent.id);
 }
 
 QTEST_MAIN(DatabaseRepositoryTests)

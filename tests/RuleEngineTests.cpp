@@ -15,6 +15,7 @@ class RuleEngineTests : public QObject {
 private slots:
     void recalculationStoresMatchesAndImageStatuses();
     void ancestorRulesDoNotConflictAndAllowConflictSuppressesSiblingConflict();
+    void childMatchWithoutMatchedAncestorIsAConflict();
 };
 
 namespace {
@@ -156,6 +157,36 @@ void RuleEngineTests::ancestorRulesDoNotConflictAndAllowConflictSuppressesSiblin
             QVERIFY(matched.contains(siblingBId));
         }
     }
+}
+
+void RuleEngineTests::childMatchWithoutMatchedAncestorIsAConflict()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    ImageRepository images(manager.db());
+    QVERIFY2(images.upsertImages({ makeImage(QStringLiteral("hero")) }), qPrintable(images.lastError()));
+
+    RuleRepository rules(manager.db());
+    const int parentId = rules.addRule(makeRule(QStringLiteral("父规则"), QStringLiteral("parent_only")));
+    QVERIFY2(parentId > 0, qPrintable(rules.lastError()));
+    const int childId = rules.addRule(makeRule(QStringLiteral("子规则"), QStringLiteral("hero"), parentId));
+    QVERIFY2(childId > 0, qPrintable(rules.lastError()));
+
+    RuleEngine engine(&images, &rules);
+    QSignalSpy finishedSpy(&engine, &RuleEngine::finished);
+    QSignalSpy failedSpy(&engine, &RuleEngine::failed);
+    engine.recalculate();
+
+    QCOMPARE(failedSpy.count(), 0);
+    QCOMPARE(finishedSpy.count(), 1);
+
+    const ImageRecord image = images.fetchAllImages().first();
+    QCOMPARE(image.status, ImageStatus::Conflict);
+    QCOMPARE(engine.matchedRulesForImage(image.id), QVector<int>({ childId }));
 }
 
 QTEST_MAIN(RuleEngineTests)
