@@ -6,6 +6,174 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QJsonValue>
+#include <QRegularExpression>
+#include <QSet>
+#include <QStringList>
+
+namespace {
+QJsonObject ruleToJson(const RuleRecord& rule)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("id"), rule.id);
+    object.insert(QStringLiteral("name"), rule.name);
+    object.insert(QStringLiteral("rule_type"), rule.ruleType);
+    object.insert(QStringLiteral("pattern"), rule.pattern);
+    object.insert(QStringLiteral("match_target"), rule.matchTarget);
+    object.insert(QStringLiteral("enabled"), rule.enabled);
+    object.insert(QStringLiteral("priority"), rule.priority);
+    object.insert(QStringLiteral("allow_conflict"), rule.allowConflict);
+    object.insert(QStringLiteral("case_sensitive"), rule.caseSensitive);
+    object.insert(QStringLiteral("whole_match"), rule.wholeMatch);
+    object.insert(QStringLiteral("note"), rule.note);
+    return object;
+}
+
+QJsonObject ruleTreeToJson(const RuleRecord& rule, const QHash<int, QVector<RuleRecord>>& childrenByParent)
+{
+    QJsonObject object = ruleToJson(rule);
+    QJsonArray children;
+    const QVector<RuleRecord> childRules = childrenByParent.value(rule.id);
+    for (const RuleRecord& child : childRules)
+        children.append(ruleTreeToJson(child, childrenByParent));
+    object.insert(QStringLiteral("children"), children);
+    return object;
+}
+
+bool jsonToRule(const QJsonObject& object, int parentId, RuleRecord* rule, QString* error)
+{
+    const QStringList required = {
+        QStringLiteral("id"),
+        QStringLiteral("name"),
+        QStringLiteral("rule_type"),
+        QStringLiteral("pattern"),
+        QStringLiteral("match_target")
+    };
+    for (const QString& key : required) {
+        if (!object.contains(key)) {
+            if (error)
+                *error = QStringLiteral("规则缺少字段：%1").arg(key);
+            return false;
+        }
+    }
+
+    RuleRecord result;
+    result.id = object.value(QStringLiteral("id")).toInt();
+    result.parentId = parentId;
+    result.name = object.value(QStringLiteral("name")).toString().trimmed();
+    result.ruleType = object.value(QStringLiteral("rule_type")).toString();
+    result.pattern = object.value(QStringLiteral("pattern")).toString().trimmed();
+    result.matchTarget = object.value(QStringLiteral("match_target")).toString();
+    result.enabled = object.value(QStringLiteral("enabled")).toBool(true);
+    result.priority = object.value(QStringLiteral("priority")).toInt();
+    result.allowConflict = object.value(QStringLiteral("allow_conflict")).toBool(false);
+    result.caseSensitive = object.value(QStringLiteral("case_sensitive")).toBool(false);
+    result.wholeMatch = object.value(QStringLiteral("whole_match")).toBool(true);
+    result.note = object.value(QStringLiteral("note")).toString();
+
+    if (result.id <= 0) {
+        if (error)
+            *error = QStringLiteral("规则 ID 必须大于 0。");
+        return false;
+    }
+    if (result.name.isEmpty() || result.pattern.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("规则名称和规则内容不能为空。");
+        return false;
+    }
+    if (!RuleUtils::isValidRuleType(result.ruleType)) {
+        if (error)
+            *error = QStringLiteral("规则类型无效：%1").arg(result.ruleType);
+        return false;
+    }
+    if (!RuleUtils::isValidMatchTarget(result.matchTarget)) {
+        if (error)
+            *error = QStringLiteral("匹配目标无效：%1").arg(result.matchTarget);
+        return false;
+    }
+    if (result.ruleType == RuleUtils::regexRuleType()) {
+        const QRegularExpression re(result.pattern);
+        if (!re.isValid()) {
+            if (error)
+                *error = QStringLiteral("正则表达式无效：%1").arg(re.errorString());
+            return false;
+        }
+    }
+
+    *rule = result;
+    return true;
+}
+
+bool appendRulesFromJsonTree(const QJsonArray& array, int parentId, QVector<RuleRecord>* rules, QString* error)
+{
+    for (const QJsonValue& value : array) {
+        if (!value.isObject()) {
+            if (error)
+                *error = QStringLiteral("rules/children 数组中存在非对象元素。");
+            return false;
+        }
+
+        const QJsonObject object = value.toObject();
+        RuleRecord rule;
+        if (!jsonToRule(object, parentId, &rule, error))
+            return false;
+        rules->append(rule);
+
+        const QJsonValue childrenValue = object.value(QStringLiteral("children"));
+        if (!childrenValue.isUndefined()) {
+            if (!childrenValue.isArray()) {
+                if (error)
+                    *error = QStringLiteral("规则“%1”的 children 必须是数组。").arg(rule.name);
+                return false;
+            }
+            if (!appendRulesFromJsonTree(childrenValue.toArray(), rule.id, rules, error))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool validateImportedRules(const QVector<RuleRecord>& rules, QString* error)
+{
+    QSet<int> ids;
+    QHash<int, int> parentById;
+    for (const RuleRecord& rule : rules) {
+        if (ids.contains(rule.id)) {
+            if (error)
+                *error = QStringLiteral("规则 ID 重复：%1").arg(rule.id);
+            return false;
+        }
+        ids.insert(rule.id);
+        parentById.insert(rule.id, rule.parentId);
+    }
+
+    for (const RuleRecord& rule : rules) {
+        if (rule.parentId == rule.id) {
+            if (error)
+                *error = QStringLiteral("规则不能作为自己的父规则：%1").arg(rule.name);
+            return false;
+        }
+        if (rule.parentId != 0 && !ids.contains(rule.parentId)) {
+            if (error)
+                *error = QStringLiteral("规则“%1”的父规则不存在。").arg(rule.name);
+            return false;
+        }
+
+        QSet<int> seen;
+        int current = rule.parentId;
+        while (current != 0) {
+            if (seen.contains(current)) {
+                if (error)
+                    *error = QStringLiteral("规则树存在循环。");
+                return false;
+            }
+            seen.insert(current);
+            current = parentById.value(current, 0);
+        }
+    }
+    return true;
+}
+}
 
 namespace RuleJsonService {
 
@@ -16,7 +184,7 @@ QJsonDocument buildExportDocument(const QVector<RuleRecord>& rules)
     for (const RuleRecord& rule : rules)
         childrenByParent[rule.parentId].append(rule);
     for (const RuleRecord& rule : childrenByParent.value(0))
-        ruleArray.append(RuleUtils::ruleTreeToJson(rule, childrenByParent));
+        ruleArray.append(ruleTreeToJson(rule, childrenByParent));
 
     QJsonObject root;
     root.insert(QStringLiteral("format"), QStringLiteral("imgmgr.rules"));
@@ -59,9 +227,9 @@ bool parseImportDocument(const QByteArray& json, QVector<RuleRecord>* rules, QSt
         return false;
     }
 
-    if (!RuleUtils::appendRulesFromJsonTree(ruleArray, 0, rules, error))
+    if (!appendRulesFromJsonTree(ruleArray, 0, rules, error))
         return false;
-    return RuleUtils::validateImportedRules(*rules, error);
+    return validateImportedRules(*rules, error);
 }
 
 }

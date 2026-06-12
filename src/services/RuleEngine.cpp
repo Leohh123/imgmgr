@@ -1,6 +1,7 @@
 #include "services/RuleEngine.h"
 
 #include "database/SqlUtils.h"
+#include "utils/RuleGraphUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QDateTime>
@@ -93,8 +94,8 @@ void addSiblingConflicts(const QVector<int>& matched, const RuleLookup& lookup, 
             const auto ruleA = lookup.byId.value(matched[a]);
             const auto ruleB = lookup.byId.value(matched[b]);
             const bool allowed = ruleA.allowConflict || ruleB.allowConflict
-                || RuleUtils::isAncestorRule(lookup.parentById, ruleA.id, ruleB.id)
-                || RuleUtils::isAncestorRule(lookup.parentById, ruleB.id, ruleA.id);
+                || RuleGraphUtils::isAncestorRule(lookup.parentById, ruleA.id, ruleB.id)
+                || RuleGraphUtils::isAncestorRule(lookup.parentById, ruleB.id, ruleA.id);
             if (!allowed) {
                 conflicts->insert(ruleA.id);
                 conflicts->insert(ruleB.id);
@@ -124,7 +125,7 @@ bool RuleEngine::isAncestorRule(int possibleAncestorId, int ruleId) const
     if (!m_rules || possibleAncestorId == ruleId)
         return false;
     const RuleLookup lookup = buildRuleLookup(m_rules->fetchRules(false));
-    return RuleUtils::isAncestorRule(lookup.parentById, possibleAncestorId, ruleId);
+    return RuleGraphUtils::isAncestorRule(lookup.parentById, possibleAncestorId, ruleId);
 }
 
 bool RuleEngine::isConflictBetweenRules(int ruleA, int ruleB) const
@@ -132,7 +133,7 @@ bool RuleEngine::isConflictBetweenRules(int ruleA, int ruleB) const
     if (!m_rules || ruleA == ruleB)
         return false;
     const RuleLookup lookup = buildRuleLookup(m_rules->fetchRules(false));
-    return RuleUtils::isConflictBetweenRules(lookup.byId, lookup.parentById, ruleA, ruleB);
+    return RuleGraphUtils::isConflictBetweenRules(lookup.byId, lookup.parentById, ruleA, ruleB);
 }
 
 QVector<int> RuleEngine::matchedRulesForImage(int imageId) const

@@ -1,6 +1,7 @@
 #include "database/ImageRepository.h"
 
 #include "database/SqlUtils.h"
+#include "utils/RuleGraphUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QHash>
@@ -144,7 +145,7 @@ ImageStatus statusForMatches(int matchCount, bool hasConflict, const QVector<int
         for (int j = i + 1; j < matchedRuleIds.size(); ++j) {
             const int a = matchedRuleIds.at(i);
             const int b = matchedRuleIds.at(j);
-            if (!RuleUtils::isAncestorRule(parentById, a, b) && !RuleUtils::isAncestorRule(parentById, b, a))
+            if (!RuleGraphUtils::isAncestorRule(parentById, a, b) && !RuleGraphUtils::isAncestorRule(parentById, b, a))
                 return ImageStatus::MultiMatch;
         }
     }

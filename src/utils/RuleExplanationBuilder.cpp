@@ -1,5 +1,6 @@
 #include "utils/RuleExplanationBuilder.h"
 
+#include "utils/RuleGraphUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QSet>
@@ -33,11 +34,11 @@ QString cachedConflictReason(
     const RuleRecord b = rulesById.value(ruleB);
     if (a.allowConflict || b.allowConflict)
         return QStringLiteral("无冲突：至少一个规则允许冲突。");
-    if (RuleUtils::isAncestorRule(parentById, ruleA, ruleB))
+    if (RuleGraphUtils::isAncestorRule(parentById, ruleA, ruleB))
         return QStringLiteral("无冲突：%1 是 %2 的祖先规则。")
             .arg(cachedRulePath(ruleA, rulesById, pathByRuleId),
                  cachedRulePath(ruleB, rulesById, pathByRuleId));
-    if (RuleUtils::isAncestorRule(parentById, ruleB, ruleA))
+    if (RuleGraphUtils::isAncestorRule(parentById, ruleB, ruleA))
         return QStringLiteral("无冲突：%1 是 %2 的祖先规则。")
             .arg(cachedRulePath(ruleB, rulesById, pathByRuleId),
                  cachedRulePath(ruleA, rulesById, pathByRuleId));
@@ -65,9 +66,9 @@ QString conflictReason(int ruleA, int ruleB, const QHash<int, RuleRecord>& rules
     const RuleRecord b = rulesById.value(ruleB);
     if (a.allowConflict || b.allowConflict)
         return QStringLiteral("无冲突：至少一个规则允许冲突。");
-    if (RuleUtils::isAncestorRule(parentById, ruleA, ruleB))
+    if (RuleGraphUtils::isAncestorRule(parentById, ruleA, ruleB))
         return QStringLiteral("无冲突：%1 是 %2 的祖先规则。").arg(rulePath(ruleA, rulesById), rulePath(ruleB, rulesById));
-    if (RuleUtils::isAncestorRule(parentById, ruleB, ruleA))
+    if (RuleGraphUtils::isAncestorRule(parentById, ruleB, ruleA))
         return QStringLiteral("无冲突：%1 是 %2 的祖先规则。").arg(rulePath(ruleB, rulesById), rulePath(ruleA, rulesById));
     return QStringLiteral("存在冲突：两个规则不在同一祖先链上，且未设置允许冲突。");
 }
@@ -129,7 +130,7 @@ QString build(const ImageRecord& image, const QVector<int>& matches, const QVect
                 .arg(cachedRulePath(a, rulesById, &pathByRuleId),
                      cachedRulePath(b, rulesById, &pathByRuleId),
                      cachedConflictReason(a, b, rulesById, parentById, &pathByRuleId));
-            if (RuleUtils::isConflictBetweenRules(rulesById, parentById, a, b))
+            if (RuleGraphUtils::isConflictBetweenRules(rulesById, parentById, a, b))
                 conflictLines << pairText;
             else
                 nonConflictLines << pairText;

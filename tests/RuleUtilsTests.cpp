@@ -1,6 +1,7 @@
 #include "services/RuleJsonService.h"
 #include "services/RuleValidationService.h"
 #include "utils/RuleExplanationBuilder.h"
+#include "utils/RuleGraphUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QtTest/QtTest>
@@ -67,8 +68,8 @@ void RuleUtilsTests::ancestorRulesDoNotConflictWithChildren()
     parentById.insert(parent.id, parent.parentId);
     parentById.insert(child.id, child.parentId);
 
-    QVERIFY(RuleUtils::isAncestorRule(parentById, parent.id, child.id));
-    QVERIFY(!RuleUtils::isConflictBetweenRules(rulesById, parentById, parent.id, child.id));
+    QVERIFY(RuleGraphUtils::isAncestorRule(parentById, parent.id, child.id));
+    QVERIFY(!RuleGraphUtils::isConflictBetweenRules(rulesById, parentById, parent.id, child.id));
 }
 
 void RuleUtilsTests::exportImportPreservesRuleTreeParents()

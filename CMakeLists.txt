@@ -66,6 +66,8 @@ qt_add_executable(imgmgr
     src/utils/RecentProjectsStore.cpp
     src/utils/RuleExplanationBuilder.h
     src/utils/RuleExplanationBuilder.cpp
+    src/utils/RuleGraphUtils.h
+    src/utils/RuleGraphUtils.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/utils/UiUtils.h
@@ -95,6 +97,8 @@ qt_add_executable(imgmgr_rule_tests
     src/services/RuleValidationService.cpp
     src/utils/RuleExplanationBuilder.h
     src/utils/RuleExplanationBuilder.cpp
+    src/utils/RuleGraphUtils.h
+    src/utils/RuleGraphUtils.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/types.h
@@ -161,6 +165,8 @@ qt_add_executable(imgmgr_database_tests
     src/database/RuleRepository.cpp
     src/database/SqlUtils.h
     src/database/SqlUtils.cpp
+    src/utils/RuleGraphUtils.h
+    src/utils/RuleGraphUtils.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/types.h
@@ -180,6 +186,8 @@ qt_add_executable(imgmgr_rule_engine_tests
     src/database/DatabaseManager.cpp
     src/database/SqlUtils.h
     src/database/SqlUtils.cpp
+    src/utils/RuleGraphUtils.h
+    src/utils/RuleGraphUtils.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/types.h
@@ -201,6 +209,8 @@ qt_add_executable(imgmgr_project_stats_tests
     src/database/DatabaseManager.cpp
     src/database/SqlUtils.h
     src/database/SqlUtils.cpp
+    src/utils/RuleGraphUtils.h
+    src/utils/RuleGraphUtils.cpp
     src/utils/RuleUtils.h
     src/utils/RuleUtils.cpp
     src/types.h
