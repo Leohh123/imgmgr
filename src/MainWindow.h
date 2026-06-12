@@ -1,13 +1,6 @@
 #pragma once
 
-#include "database/DatabaseManager.h"
-#include "database/ImageRepository.h"
-#include "database/RuleRepository.h"
-#include "models/ImageListModel.h"
-#include "models/RuleTreeModel.h"
-#include "services/ProjectScanner.h"
-#include "services/RuleEngine.h"
-#include "services/ThumbnailCache.h"
+#include "services/ProjectSession.h"
 #include "widgets/FilterPanel.h"
 #include "widgets/ImagePreviewWidget.h"
 #include "widgets/RulePanel.h"
@@ -57,8 +50,6 @@ private:
 
     // Project lifecycle
     void setProject(const QString& dbPath);
-    void resetProjectComponents();
-    void createProjectComponents();
     void bindProjectModels();
     void clearProjectViews();
     void removeRulePanelTab();
@@ -103,14 +94,7 @@ private:
     void refreshStats();
     void showImage(const QModelIndex& current);
 
-    DatabaseManager m_database;
-    ImageRepository m_images;
-    RuleRepository m_rules;
-    ThumbnailCache* m_thumbnails = nullptr;
-    ImageListModel* m_imageModel = nullptr;
-    RuleTreeModel* m_ruleModel = nullptr;
-    ProjectScanner* m_scanner = nullptr;
-    RuleEngine* m_ruleEngine = nullptr;
+    ProjectSession m_project;
 
     QTableView* m_table = nullptr;
     FilterPanel* m_filter = nullptr;
@@ -126,8 +110,6 @@ private:
     QHash<int, QAction*> m_imageColumnActions;
     QColor m_thumbnailBackgroundColor;
     bool m_thumbnailCheckerboardBackground = true;
-    QString m_projectDir;
-    quint64 m_projectGeneration = 0;
     QVector<RuleRecord> m_ruleExplanationRules;
     bool m_ruleExplanationRulesDirty = true;
     RuleRecord m_selectedRule;

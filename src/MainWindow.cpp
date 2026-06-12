@@ -1,5 +1,8 @@
 #include "MainWindow.h"
 
+#include "models/ImageListModel.h"
+#include "services/ProjectScanner.h"
+#include "services/RuleEngine.h"
 #include "utils/FileIoUtils.h"
 #include "utils/ImageTableUtils.h"
 #include "utils/PaintUtils.h"
@@ -19,7 +22,6 @@
 #include <QButtonGroup>
 #include <QDir>
 #include <QDialog>
-#include <QFileInfo>
 #include <QHeaderView>
 #include <QLabel>
 #include <QMenuBar>
@@ -255,18 +257,17 @@ void MainWindow::openProject()
 
 void MainWindow::setProject(const QString& dbPath)
 {
-    if (!m_database.openProject(dbPath)) {
-        QMessageBox::critical(this, QStringLiteral("打开项目失败"), m_database.lastError());
+    clearProjectViews();
+    removeRulePanelTab();
+    delete m_rulePanel;
+    m_rulePanel = nullptr;
+
+    if (!m_project.openProject(dbPath)) {
+        QMessageBox::critical(this, QStringLiteral("打开项目失败"), m_project.lastError());
         return;
     }
-    m_projectDir = QFileInfo(dbPath).absolutePath();
-    ++m_projectGeneration;
     invalidateRuleExplanationRules();
-    m_images.setDatabase(m_database.db());
-    m_rules.setDatabase(m_database.db());
 
-    resetProjectComponents();
-    createProjectComponents();
     bindProjectModels();
     connectProjectSignals();
 
@@ -275,37 +276,9 @@ void MainWindow::setProject(const QString& dbPath)
     refreshStats();
 }
 
-void MainWindow::resetProjectComponents()
-{
-    clearProjectViews();
-    removeRulePanelTab();
-    delete m_rulePanel;
-    m_rulePanel = nullptr;
-    delete m_thumbnails;
-    m_thumbnails = nullptr;
-    delete m_imageModel;
-    m_imageModel = nullptr;
-    delete m_ruleModel;
-    m_ruleModel = nullptr;
-    delete m_scanner;
-    m_scanner = nullptr;
-    delete m_ruleEngine;
-    m_ruleEngine = nullptr;
-}
-
-void MainWindow::createProjectComponents()
-{
-    m_thumbnails = new ThumbnailCache(&m_images, this);
-    m_thumbnails->setCacheDir(QDir(m_projectDir).filePath(".project_cache/thumbnails"));
-    m_imageModel = new ImageListModel(&m_images, m_thumbnails, this);
-    m_ruleModel = new RuleTreeModel(&m_rules, this);
-    m_scanner = new ProjectScanner(&m_images, this);
-    m_ruleEngine = new RuleEngine(&m_images, &m_rules, this);
-}
-
 void MainWindow::bindProjectModels()
 {
-    m_table->setModel(m_imageModel);
+    m_table->setModel(m_project.imageModel());
     if (!m_table->itemDelegateForColumn(ImageListModel::ThumbnailColumn))
         m_table->setItemDelegateForColumn(ImageListModel::ThumbnailColumn, new ThumbnailDelegate(m_table));
     ImageTableUtils::configureColumns(m_table);
@@ -353,7 +326,7 @@ void MainWindow::installRulePanelTab()
     }
 
     const int ruleTabIndex = qMin(1, m_detailTabs->count());
-    m_rulePanel = new RulePanel(m_ruleModel, m_detailTabs);
+    m_rulePanel = new RulePanel(m_project.ruleModel(), m_detailTabs);
     m_detailTabs->insertTab(ruleTabIndex, m_rulePanel, ruleTabTitle);
 }
 
@@ -361,13 +334,13 @@ void MainWindow::connectProjectSignals()
 {
     connect(m_table->selectionModel(), &QItemSelectionModel::currentRowChanged, this, &MainWindow::showImage);
     connectRulePanelSignals();
-    connectScannerSignals(m_projectGeneration);
-    connectRuleEngineSignals(m_projectGeneration);
+    connectScannerSignals(m_project.generation());
+    connectRuleEngineSignals(m_project.generation());
 }
 
 bool MainWindow::isCurrentProjectGeneration(quint64 projectGeneration) const
 {
-    return projectGeneration == m_projectGeneration;
+    return projectGeneration == m_project.generation();
 }
 
 void MainWindow::selectRuleForFilter(const RuleRecord& rule)
@@ -415,7 +388,7 @@ void MainWindow::applySelectedRuleFilter(const RuleRecord& rule)
 
 void MainWindow::editSelectedRule(const RuleRecord& selectedRule)
 {
-    RuleRecord rule = m_rules.fetchRule(selectedRule.id);
+    RuleRecord rule = m_project.rules().fetchRule(selectedRule.id);
     if (rule.id == 0)
         return;
     if (!editRuleWithDialog(rule, QStringLiteral("编辑规则")))
@@ -432,8 +405,8 @@ void MainWindow::deleteSelectedRule(const RuleRecord& rule)
         QStringLiteral("确定删除规则“%1”及其所有子规则吗？").arg(rule.name));
     if (answer != QMessageBox::Yes)
         return;
-    if (!m_rules.removeRuleRecursive(rule.id)) {
-        QMessageBox::critical(this, QStringLiteral("删除规则失败"), m_rules.lastError());
+    if (!m_project.rules().removeRuleRecursive(rule.id)) {
+        QMessageBox::critical(this, QStringLiteral("删除规则失败"), m_project.rules().lastError());
         return;
     }
     invalidateRuleExplanationRules();
@@ -442,7 +415,7 @@ void MainWindow::deleteSelectedRule(const RuleRecord& rule)
 
 void MainWindow::toggleSelectedRuleEnabled(const RuleRecord& selectedRule)
 {
-    RuleRecord rule = m_rules.fetchRule(selectedRule.id);
+    RuleRecord rule = m_project.rules().fetchRule(selectedRule.id);
     if (rule.id == 0)
         return;
     rule.enabled = !rule.enabled;
@@ -453,18 +426,18 @@ void MainWindow::toggleSelectedRuleEnabled(const RuleRecord& selectedRule)
 
 void MainWindow::connectScannerSignals(quint64 projectGeneration)
 {
-    connect(m_scanner, &ProjectScanner::progress, this, [this, projectGeneration](int current, int total, const QString& path) {
+    connect(m_project.scanner(), &ProjectScanner::progress, this, [this, projectGeneration](int current, int total, const QString& path) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         showScannerProgress(current, total, path);
     });
-    connect(m_scanner, &ProjectScanner::finished, this, [this, projectGeneration](int count) {
+    connect(m_project.scanner(), &ProjectScanner::finished, this, [this, projectGeneration](int count) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         hideProgressWithStatus(QStringLiteral("扫描完成：%1 张图片").arg(count));
         reloadImagesAndStats({});
     });
-    connect(m_scanner, &ProjectScanner::failed, this, [this, projectGeneration](const QString& error) {
+    connect(m_project.scanner(), &ProjectScanner::failed, this, [this, projectGeneration](const QString& error) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         showProgressFailure(QStringLiteral("扫描失败"), error);
@@ -473,18 +446,18 @@ void MainWindow::connectScannerSignals(quint64 projectGeneration)
 
 void MainWindow::connectRuleEngineSignals(quint64 projectGeneration)
 {
-    connect(m_ruleEngine, &RuleEngine::progress, this, [this, projectGeneration](int current, int total) {
+    connect(m_project.ruleEngine(), &RuleEngine::progress, this, [this, projectGeneration](int current, int total) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         showRuleEngineProgress(current, total);
     });
-    connect(m_ruleEngine, &RuleEngine::finished, this, [this, projectGeneration] {
+    connect(m_project.ruleEngine(), &RuleEngine::finished, this, [this, projectGeneration] {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         hideProgressWithStatus(QStringLiteral("规则重算完成"));
         reloadAfterRuleRecalculation();
     });
-    connect(m_ruleEngine, &RuleEngine::failed, this, [this, projectGeneration](const QString& error) {
+    connect(m_project.ruleEngine(), &RuleEngine::failed, this, [this, projectGeneration](const QString& error) {
         if (!isCurrentProjectGeneration(projectGeneration))
             return;
         showProgressFailure(QStringLiteral("规则重算失败"), error);
@@ -530,7 +503,7 @@ void MainWindow::exportRulesToJson()
     if (path.isEmpty())
         return;
 
-    const QVector<RuleRecord> rules = m_rules.fetchRules(false);
+    const QVector<RuleRecord> rules = m_project.rules().fetchRules(false);
     const QJsonDocument document = RuleJsonService::buildExportDocument(rules);
 
     QString error;
@@ -573,7 +546,7 @@ void MainWindow::importRulesFromJson()
 
 bool MainWindow::hasOpenProject()
 {
-    if (m_database.db().isOpen())
+    if (m_project.isOpen())
         return true;
     QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先打开项目数据库。"));
     return false;
@@ -581,12 +554,12 @@ bool MainWindow::hasOpenProject()
 
 bool MainWindow::ensureProjectForScanning()
 {
-    if (!m_database.db().isOpen()) {
+    if (!m_project.isOpen()) {
         openProject();
-        if (!m_database.db().isOpen())
+        if (!m_project.isOpen())
             return false;
     }
-    if (m_scanner)
+    if (m_project.scanner())
         return true;
 
     QMessageBox::warning(this, QStringLiteral("未打开项目"), QStringLiteral("请先新建或打开项目数据库。"));
@@ -605,8 +578,8 @@ bool MainWindow::confirmReplaceRules(int ruleCount)
 
 bool MainWindow::applyImportedRules(const QVector<RuleRecord>& rules)
 {
-    if (!m_rules.replaceRules(rules)) {
-        QMessageBox::critical(this, QStringLiteral("导入失败"), m_rules.lastError());
+    if (!m_project.rules().replaceRules(rules)) {
+        QMessageBox::critical(this, QStringLiteral("导入失败"), m_project.rules().lastError());
         return false;
     }
 
@@ -619,11 +592,11 @@ bool MainWindow::applyImportedRules(const QVector<RuleRecord>& rules)
 
 bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
 {
-    const QVector<RuleRecord> allRules = m_rules.fetchRules(false);
+    const QVector<RuleRecord> allRules = m_project.rules().fetchRules(false);
     QSet<int> invalidParentIds;
     if (rule.id > 0) {
         invalidParentIds.insert(rule.id);
-        for (int childId : m_rules.childRuleIdsRecursive(rule.id))
+        for (int childId : m_project.rules().childRuleIdsRecursive(rule.id))
             invalidParentIds.insert(childId);
     }
     RuleEditDialog dialog(rule, allRules, invalidParentIds, title, this);
@@ -635,7 +608,7 @@ bool MainWindow::editRuleWithDialog(RuleRecord& rule, const QString& title)
 
 bool MainWindow::saveUpdatedRule(const RuleRecord& rule)
 {
-    if (m_rules.updateRule(rule)) {
+    if (m_project.rules().updateRule(rule)) {
         invalidateRuleExplanationRules();
         return true;
     }
@@ -645,11 +618,11 @@ bool MainWindow::saveUpdatedRule(const RuleRecord& rule)
 
 void MainWindow::reloadImages(const ImageFilter& filter)
 {
-    if (!m_imageModel)
+    if (!m_project.imageModel())
         return;
     QElapsedTimer timer;
     timer.start();
-    m_imageModel->reload(filter);
+    m_project.imageModel()->reload(filter);
     updateFilterStatus(timer.elapsed());
 }
 
@@ -668,12 +641,12 @@ void MainWindow::reloadAfterRuleRecalculation()
 
 void MainWindow::updateFilterStatus(qint64 elapsedMs)
 {
-    if (!m_imageModel || !m_status)
+    if (!m_project.imageModel() || !m_status)
         return;
-    const int total = m_imageModel->totalImageCount();
-    const int classified = m_imageModel->statusCount(ImageStatus::Classified);
-    const int unclassified = m_imageModel->statusCount(ImageStatus::Unclassified);
-    const int conflicts = m_imageModel->statusCount(ImageStatus::Conflict);
+    const int total = m_project.imageModel()->totalImageCount();
+    const int classified = m_project.imageModel()->statusCount(ImageStatus::Classified);
+    const int unclassified = m_project.imageModel()->statusCount(ImageStatus::Unclassified);
+    const int conflicts = m_project.imageModel()->statusCount(ImageStatus::Conflict);
     m_status->setText(QStringLiteral("当前筛选：%1 张 | 已分类：%2 | 未分类：%3 | 冲突：%4 | 用时：%5 ms")
         .arg(total)
         .arg(classified)
@@ -736,7 +709,7 @@ void MainWindow::showProgressFailure(const QString& title, const QString& error)
 const QVector<RuleRecord>& MainWindow::ruleExplanationRules()
 {
     if (m_ruleExplanationRulesDirty) {
-        m_ruleExplanationRules = m_rules.fetchRules(false);
+        m_ruleExplanationRules = m_project.rules().fetchRules(false);
         m_ruleExplanationRulesDirty = false;
     }
     return m_ruleExplanationRules;
@@ -756,26 +729,26 @@ void MainWindow::scanResourceDirectory()
     const QString dir = ProjectFileDialogs::selectResourceDirectory(this);
     if (dir.isEmpty())
         return;
-    if (ProjectPathService::projectWritesWouldTouchResourceDir(m_projectDir, dir)) {
+    if (ProjectPathService::projectWritesWouldTouchResourceDir(m_project.projectDir(), dir)) {
         QMessageBox::warning(this,
             QStringLiteral("项目目录不能位于资源目录内"),
             QStringLiteral("为保证资源目录完全只读，项目数据库和 .project_cache 缩略图缓存必须保存在资源目录之外。\n\n请把项目 .db 文件放到其他目录后再扫描。"));
         return;
     }
     showIndeterminateProgress(QStringLiteral("准备扫描：%1").arg(dir));
-    m_scanner->scan(dir);
+    m_project.scanner()->scan(dir);
 }
 
 void MainWindow::saveRule(const RuleRecord& input)
 {
-    if (!m_database.db().isOpen())
+    if (!m_project.isOpen())
         return;
     addRuleAndRecalculate(input);
 }
 
 void MainWindow::saveChildRule(const RuleRecord& input)
 {
-    if (!m_database.db().isOpen())
+    if (!m_project.isOpen())
         return;
     if (m_selectedRule.id <= 0) {
         QMessageBox::warning(this, QStringLiteral("未选择父规则"), QStringLiteral("请先在规则树中选择一个父规则。"));
@@ -793,7 +766,7 @@ bool MainWindow::addRuleAndRecalculate(const RuleRecord& rule)
         QMessageBox::warning(this, error.title, error.message);
         return false;
     }
-    if (!m_rules.addRule(rule)) {
+    if (!m_project.rules().addRule(rule)) {
         showRuleSaveFailure();
         return false;
     }
@@ -811,28 +784,28 @@ void MainWindow::reloadRulePanel()
 
 void MainWindow::showRuleSaveFailure()
 {
-    QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_rules.lastError());
+    QMessageBox::critical(this, QStringLiteral("保存规则失败"), m_project.rules().lastError());
 }
 
 void MainWindow::recalculateRules()
 {
-    if (m_ruleEngine)
-        m_ruleEngine->recalculate();
+    if (m_project.ruleEngine())
+        m_project.ruleEngine()->recalculate();
 }
 
 void MainWindow::showImage(const QModelIndex& current)
 {
-    if (!m_imageModel || !current.isValid())
+    if (!m_project.imageModel() || !current.isValid())
         return;
-    const ImageRecord image = m_imageModel->imageAt(current.row());
+    const ImageRecord image = m_project.imageModel()->imageAt(current.row());
     m_preview->setImage(image);
-    const QVector<int> matches = m_ruleEngine ? m_ruleEngine->matchedRulesForImage(image.id) : QVector<int>();
+    const QVector<int> matches = m_project.ruleEngine() ? m_project.ruleEngine()->matchedRulesForImage(image.id) : QVector<int>();
     m_explain->setText(RuleExplanationBuilder::build(image, matches, ruleExplanationRules()));
 }
 
 void MainWindow::refreshStats()
 {
-    if (!m_database.db().isOpen())
+    if (!m_project.isOpen())
         return;
-    m_stats->setText(ProjectStatsService::buildStatsText(m_database.db(), m_images));
+    m_stats->setText(ProjectStatsService::buildStatsText(m_project.db(), m_project.images()));
 }

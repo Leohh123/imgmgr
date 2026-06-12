@@ -30,6 +30,8 @@ qt_add_executable(imgmgr
     src/models/RuleTreeModel.cpp
     src/services/ProjectScanner.h
     src/services/ProjectScanner.cpp
+    src/services/ProjectSession.h
+    src/services/ProjectSession.cpp
     src/services/ThumbnailCache.h
     src/services/ThumbnailCache.cpp
     src/services/RuleEngine.h
