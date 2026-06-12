@@ -90,7 +90,7 @@ QModelIndex RuleTreeModel::index(int row, int column, const QModelIndex& parentI
     if (!hasIndex(row, column, parentIndex))
         return {};
     RuleNode* parentNode = nodeFromIndex(parentIndex);
-    if (!parentNode || row >= parentNode->children.size())
+    if (!parentNode || row >= static_cast<int>(parentNode->children.size()))
         return {};
     return createIndex(row, column, parentNode->children[row].get());
 }
@@ -104,7 +104,8 @@ QModelIndex RuleTreeModel::parent(const QModelIndex& child) const
     if (!parentNode || parentNode == m_root.get())
         return {};
     RuleNode* grand = parentNode->parent ? parentNode->parent : m_root.get();
-    for (int row = 0; row < grand->children.size(); ++row) {
+    const int childCount = static_cast<int>(grand->children.size());
+    for (int row = 0; row < childCount; ++row) {
         if (grand->children[row].get() == parentNode)
             return createIndex(row, 0, parentNode);
     }

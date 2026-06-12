@@ -12,6 +12,14 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Concurrent Test)
 
 enable_testing()
 
+function(configure_imgmgr_warnings target)
+    if (MSVC)
+        target_compile_options(${target} PRIVATE /W4 /utf-8)
+    elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -finput-charset=UTF-8 -fexec-charset=UTF-8)
+    endif()
+endfunction()
+
 qt_add_executable(imgmgr
     src/main.cpp
     src/MainWindow.h
@@ -79,10 +87,12 @@ qt_add_executable(imgmgr
 
 target_include_directories(imgmgr PRIVATE src)
 target_link_libraries(imgmgr PRIVATE Qt6::Widgets Qt6::Sql Qt6::Concurrent)
+configure_imgmgr_warnings(imgmgr)
 
 function(configure_imgmgr_test target)
     target_include_directories(${target} PRIVATE src tests)
     target_link_libraries(${target} PRIVATE Qt6::Core Qt6::Test)
+    configure_imgmgr_warnings(${target})
     set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE FALSE)
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Qt6::Test> $<TARGET_FILE_DIR:${target}>)
@@ -96,6 +106,7 @@ add_library(imgmgr_test_support STATIC
 )
 target_include_directories(imgmgr_test_support PUBLIC src tests)
 target_link_libraries(imgmgr_test_support PUBLIC Qt6::Core)
+configure_imgmgr_warnings(imgmgr_test_support)
 
 set(IMGMGR_RULE_CORE_TEST_SOURCES
     src/utils/RuleGraphUtils.h
@@ -207,12 +218,6 @@ qt_add_executable(imgmgr_project_stats_tests
 )
 configure_imgmgr_test(imgmgr_project_stats_tests)
 target_link_libraries(imgmgr_project_stats_tests PRIVATE Qt6::Sql imgmgr_test_support)
-
-if (MSVC)
-    target_compile_options(imgmgr PRIVATE /utf-8)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(imgmgr PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
-endif()
 
 if (WIN32)
     set_target_properties(imgmgr PROPERTIES WIN32_EXECUTABLE TRUE)

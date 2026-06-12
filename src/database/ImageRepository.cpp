@@ -8,7 +8,6 @@
 #include <QQueue>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QSqlRecord>
 
 namespace {
 struct ImageQuery {
