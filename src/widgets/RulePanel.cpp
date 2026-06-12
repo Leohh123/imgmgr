@@ -16,7 +16,6 @@ RulePanel::RulePanel(RuleTreeModel* model, QWidget* parent)
     m_tree->setModel(m_model);
     m_tree->setAlternatingRowColors(true);
     m_tree->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_tree->setDragDropMode(QAbstractItemView::InternalMove);
     m_tree->header()->setStretchLastSection(false);
     m_tree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_tree->viewport()->installEventFilter(this);

@@ -51,7 +51,6 @@ struct ImageFilter {
     bool onlyConflict = true;
     bool onlyMultiMatch = true;
     int currentRuleId = 0;
-    bool includeChildren = false;
     bool onlyCurrentRule = false;
     bool caseSensitive = false;
     bool wholeMatch = true;
