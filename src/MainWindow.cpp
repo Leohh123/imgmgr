@@ -311,7 +311,7 @@ void MainWindow::bindProjectModels()
     ImageTableUtils::configureColumns(m_table);
     updateImageColumnVisibility();
     reloadImages({});
-    clearSelectedRule(false);
+    clearSelectedRule(true);
     installRulePanelTab();
     reloadRulePanel();
 }
@@ -385,8 +385,9 @@ void MainWindow::clearSelectedRule(bool clearFilterBinding)
     if (!m_filter)
         return;
     if (clearFilterBinding)
-        m_filter->clearRuleBinding();
-    m_filter->setChildRuleEnabled(false);
+        m_filter->clearRuleContext();
+    else
+        m_filter->setChildRuleEnabled(false);
 }
 
 void MainWindow::connectRulePanelSignals()

@@ -17,6 +17,7 @@ public:
     ImageFilter filter() const;
     void setRule(const RuleRecord& rule, bool bindRuleMatch = true);
     void clearRuleBinding();
+    void clearRuleContext();
     void setChildRuleEnabled(bool enabled);
 
 signals:

@@ -131,7 +131,7 @@ void FilterPanel::connectControls()
     connect(m_clearButton, &QPushButton::clicked, this, [this] {
         m_ruleName->clear();
         m_pattern->clear();
-        m_currentRuleId = 0;
+        clearRuleContext();
         setStatusFiltersChecked(true);
         m_caseSensitive->setChecked(false);
         m_wholeMatch->setChecked(true);
@@ -177,6 +177,14 @@ void FilterPanel::setRule(const RuleRecord& rule, bool bindRuleMatch)
 void FilterPanel::clearRuleBinding()
 {
     m_currentRuleId = 0;
+}
+
+void FilterPanel::clearRuleContext()
+{
+    clearRuleBinding();
+    if (m_onlyCurrentRule)
+        m_onlyCurrentRule->setChecked(false);
+    setChildRuleEnabled(false);
 }
 
 void FilterPanel::setChildRuleEnabled(bool enabled)

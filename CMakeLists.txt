@@ -128,6 +128,19 @@ qt_add_executable(imgmgr_image_tests
 configure_imgmgr_test(imgmgr_image_tests)
 target_link_libraries(imgmgr_image_tests PRIVATE Qt6::Gui)
 
+qt_add_executable(imgmgr_filter_panel_tests
+    tests/FilterPanelTests.cpp
+    src/widgets/FilterPanel.h
+    src/widgets/FilterPanel.cpp
+    src/utils/UiUtils.h
+    src/utils/UiUtils.cpp
+    src/utils/RuleUtils.h
+    src/utils/RuleUtils.cpp
+    src/types.h
+)
+configure_imgmgr_test(imgmgr_filter_panel_tests)
+target_link_libraries(imgmgr_filter_panel_tests PRIVATE Qt6::Widgets)
+
 qt_add_executable(imgmgr_sql_tests
     tests/SqlUtilsTests.cpp
     src/database/SqlUtils.h
