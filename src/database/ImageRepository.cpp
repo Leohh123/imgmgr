@@ -323,6 +323,23 @@ QVector<ImageRecord> ImageRepository::fetchAllImages(const ImageFilter& filter) 
     return fetchImages(filter, 0);
 }
 
+QVector<ImageRecord> ImageRepository::fetchImagesForRuleEvaluation() const
+{
+    QVector<ImageRecord> out;
+    QSqlQuery q(m_db);
+    if (!SqlUtils::exec(&q, QStringLiteral(
+            "SELECT i.*, 0 AS match_count "
+            "FROM images i "
+            "ORDER BY i.relative_path"),
+            &m_lastError)) {
+        return out;
+    }
+
+    while (q.next())
+        out << imageRecordFromQuery(q);
+    return out;
+}
+
 ImageRecord ImageRepository::fetchImage(int imageId) const
 {
     const QHash<int, int> parentById = loadRuleParents(m_db);

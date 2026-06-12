@@ -17,6 +17,7 @@ private slots:
     void imageRepositoryUpsertsFetchesAndUpdatesThumbnail();
     void imageRepositoryFiltersByPatternStatusAndRule();
     void imageRepositoryAppliesLimitAfterPostQueryFilters();
+    void imageRepositoryFetchesRuleEvaluationMetadataWithoutMatchAggregation();
     void ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively();
     void replaceRulesPreservesHierarchyAndRollsBackOnFailure();
 };
@@ -246,6 +247,44 @@ void DatabaseRepositoryTests::imageRepositoryAppliesLimitAfterPostQueryFilters()
     filtered = images.fetchImages(regexFilter, 1);
     QCOMPARE(filtered.size(), 1);
     QCOMPARE(filtered.first().fileStem, QStringLiteral("z_target_01"));
+}
+
+void DatabaseRepositoryTests::imageRepositoryFetchesRuleEvaluationMetadataWithoutMatchAggregation()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    ImageRepository images(manager.db());
+    const ImageRecord image = makeImage(
+        QStringLiteral("D:/assets/characters/hero.png"),
+        QStringLiteral("characters/hero.png"),
+        QStringLiteral("hero.png"));
+    QVERIFY2(images.upsertImages({ image }), qPrintable(images.lastError()));
+    const int imageId = images.fetchAllImages().first().id;
+
+    RuleRepository rules(manager.db());
+    const int ruleId = rules.addRule(makeRule(QStringLiteral("主角"), QStringLiteral("hero")));
+    QVERIFY2(ruleId > 0, qPrintable(rules.lastError()));
+
+    QSqlQuery insertMatch(manager.db());
+    insertMatch.prepare(QStringLiteral(
+        "INSERT INTO image_rule_matches (image_id, rule_id, is_conflict, created_at) VALUES (?,?,?,0)"));
+    insertMatch.addBindValue(imageId);
+    insertMatch.addBindValue(ruleId);
+    insertMatch.addBindValue(0);
+    QString error;
+    QVERIFY2(SqlUtils::exec(&insertMatch, &error), qPrintable(error));
+
+    const QVector<ImageRecord> records = images.fetchImagesForRuleEvaluation();
+    QCOMPARE(records.size(), 1);
+    QCOMPARE(records.first().id, imageId);
+    QCOMPARE(records.first().relativePath, QStringLiteral("characters/hero.png"));
+    QCOMPARE(records.first().fileStem, QStringLiteral("hero"));
+    QCOMPARE(records.first().matchCount, 0);
+    QCOMPARE(records.first().status, ImageStatus::Unclassified);
 }
 
 void DatabaseRepositoryTests::ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively()

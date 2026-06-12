@@ -158,7 +158,7 @@ void RuleEngine::recalculate()
     }
 
     QSqlDatabase db = m_images->database();
-    const auto images = m_images->fetchAllImages();
+    const auto images = m_images->fetchImagesForRuleEvaluation();
     const auto rules = m_rules->fetchRules(true);
     const QVector<CompiledRule> compiledRules = compileRules(rules);
     const RuleLookup ruleLookup = buildRuleLookup(rules);
