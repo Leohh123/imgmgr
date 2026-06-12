@@ -81,13 +81,47 @@ target_include_directories(imgmgr PRIVATE src)
 target_link_libraries(imgmgr PRIVATE Qt6::Widgets Qt6::Sql Qt6::Concurrent)
 
 function(configure_imgmgr_test target)
-    target_include_directories(${target} PRIVATE src)
+    target_include_directories(${target} PRIVATE src tests)
     target_link_libraries(${target} PRIVATE Qt6::Core Qt6::Test)
     set_target_properties(${target} PROPERTIES WIN32_EXECUTABLE FALSE)
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:Qt6::Test> $<TARGET_FILE_DIR:${target}>)
     add_test(NAME ${target} COMMAND ${target})
 endfunction()
+
+add_library(imgmgr_test_support STATIC
+    tests/TestDbUtils.h
+    tests/TestDbUtils.cpp
+    src/types.h
+)
+target_include_directories(imgmgr_test_support PUBLIC src tests)
+target_link_libraries(imgmgr_test_support PUBLIC Qt6::Core)
+
+set(IMGMGR_RULE_CORE_TEST_SOURCES
+    src/utils/RuleGraphUtils.h
+    src/utils/RuleGraphUtils.cpp
+    src/utils/RuleUtils.h
+    src/utils/RuleUtils.cpp
+    src/types.h
+)
+
+set(IMGMGR_DATABASE_CORE_TEST_SOURCES
+    src/database/DatabaseManager.h
+    src/database/DatabaseManager.cpp
+    src/database/ImageRepository.h
+    src/database/ImageRepository.cpp
+    src/database/RuleRepository.h
+    src/database/RuleRepository.cpp
+    src/database/SqlUtils.h
+    src/database/SqlUtils.cpp
+    ${IMGMGR_RULE_CORE_TEST_SOURCES}
+)
+
+set(IMGMGR_RULE_ENGINE_CORE_TEST_SOURCES
+    src/services/RuleEngine.h
+    src/services/RuleEngine.cpp
+    ${IMGMGR_DATABASE_CORE_TEST_SOURCES}
+)
 
 qt_add_executable(imgmgr_rule_tests
     tests/RuleUtilsTests.cpp
@@ -97,11 +131,7 @@ qt_add_executable(imgmgr_rule_tests
     src/services/RuleValidationService.cpp
     src/utils/RuleExplanationBuilder.h
     src/utils/RuleExplanationBuilder.cpp
-    src/utils/RuleGraphUtils.h
-    src/utils/RuleGraphUtils.cpp
-    src/utils/RuleUtils.h
-    src/utils/RuleUtils.cpp
-    src/types.h
+    ${IMGMGR_RULE_CORE_TEST_SOURCES}
 )
 configure_imgmgr_test(imgmgr_rule_tests)
 
@@ -153,70 +183,30 @@ qt_add_executable(imgmgr_sql_tests
     src/database/SqlUtils.cpp
 )
 configure_imgmgr_test(imgmgr_sql_tests)
-target_link_libraries(imgmgr_sql_tests PRIVATE Qt6::Sql)
+target_link_libraries(imgmgr_sql_tests PRIVATE Qt6::Sql imgmgr_test_support)
 
 qt_add_executable(imgmgr_database_tests
     tests/DatabaseRepositoryTests.cpp
-    src/database/DatabaseManager.h
-    src/database/DatabaseManager.cpp
-    src/database/ImageRepository.h
-    src/database/ImageRepository.cpp
-    src/database/RuleRepository.h
-    src/database/RuleRepository.cpp
-    src/database/SqlUtils.h
-    src/database/SqlUtils.cpp
-    src/utils/RuleGraphUtils.h
-    src/utils/RuleGraphUtils.cpp
-    src/utils/RuleUtils.h
-    src/utils/RuleUtils.cpp
-    src/types.h
+    ${IMGMGR_DATABASE_CORE_TEST_SOURCES}
 )
 configure_imgmgr_test(imgmgr_database_tests)
-target_link_libraries(imgmgr_database_tests PRIVATE Qt6::Sql)
+target_link_libraries(imgmgr_database_tests PRIVATE Qt6::Sql imgmgr_test_support)
 
 qt_add_executable(imgmgr_rule_engine_tests
     tests/RuleEngineTests.cpp
-    src/services/RuleEngine.h
-    src/services/RuleEngine.cpp
-    src/database/ImageRepository.h
-    src/database/ImageRepository.cpp
-    src/database/RuleRepository.h
-    src/database/RuleRepository.cpp
-    src/database/DatabaseManager.h
-    src/database/DatabaseManager.cpp
-    src/database/SqlUtils.h
-    src/database/SqlUtils.cpp
-    src/utils/RuleGraphUtils.h
-    src/utils/RuleGraphUtils.cpp
-    src/utils/RuleUtils.h
-    src/utils/RuleUtils.cpp
-    src/types.h
+    ${IMGMGR_RULE_ENGINE_CORE_TEST_SOURCES}
 )
 configure_imgmgr_test(imgmgr_rule_engine_tests)
-target_link_libraries(imgmgr_rule_engine_tests PRIVATE Qt6::Sql)
+target_link_libraries(imgmgr_rule_engine_tests PRIVATE Qt6::Sql imgmgr_test_support)
 
 qt_add_executable(imgmgr_project_stats_tests
     tests/ProjectStatsServiceTests.cpp
     src/services/ProjectStatsService.h
     src/services/ProjectStatsService.cpp
-    src/services/RuleEngine.h
-    src/services/RuleEngine.cpp
-    src/database/ImageRepository.h
-    src/database/ImageRepository.cpp
-    src/database/RuleRepository.h
-    src/database/RuleRepository.cpp
-    src/database/DatabaseManager.h
-    src/database/DatabaseManager.cpp
-    src/database/SqlUtils.h
-    src/database/SqlUtils.cpp
-    src/utils/RuleGraphUtils.h
-    src/utils/RuleGraphUtils.cpp
-    src/utils/RuleUtils.h
-    src/utils/RuleUtils.cpp
-    src/types.h
+    ${IMGMGR_RULE_ENGINE_CORE_TEST_SOURCES}
 )
 configure_imgmgr_test(imgmgr_project_stats_tests)
-target_link_libraries(imgmgr_project_stats_tests PRIVATE Qt6::Sql)
+target_link_libraries(imgmgr_project_stats_tests PRIVATE Qt6::Sql imgmgr_test_support)
 
 if (MSVC)
     target_compile_options(imgmgr PRIVATE /utf-8)

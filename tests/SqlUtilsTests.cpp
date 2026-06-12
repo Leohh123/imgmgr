@@ -1,8 +1,8 @@
 #include "database/SqlUtils.h"
+#include "TestDbUtils.h"
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
-#include <QUuid>
 #include <QtTest/QtTest>
 
 class SqlUtilsTests : public QObject {
@@ -14,16 +14,9 @@ private slots:
     void runStatementsStopsOnFirstFailure();
 };
 
-namespace {
-QString uniqueConnectionName()
-{
-    return QStringLiteral("sql_utils_test_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
-}
-}
-
 void SqlUtilsTests::execRunsSqlTextAndPreparedStatements()
 {
-    const QString connectionName = uniqueConnectionName();
+    const QString connectionName = TestDbUtils::uniqueConnectionName(QStringLiteral("sql_utils_test"));
     {
         QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
         db.setDatabaseName(QStringLiteral(":memory:"));
@@ -49,7 +42,7 @@ void SqlUtilsTests::execRunsSqlTextAndPreparedStatements()
 
 void SqlUtilsTests::execFailureReportsError()
 {
-    const QString connectionName = uniqueConnectionName();
+    const QString connectionName = TestDbUtils::uniqueConnectionName(QStringLiteral("sql_utils_test"));
     {
         QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
         db.setDatabaseName(QStringLiteral(":memory:"));
@@ -67,7 +60,7 @@ void SqlUtilsTests::execFailureReportsError()
 
 void SqlUtilsTests::runStatementsStopsOnFirstFailure()
 {
-    const QString connectionName = uniqueConnectionName();
+    const QString connectionName = TestDbUtils::uniqueConnectionName(QStringLiteral("sql_utils_test"));
     {
         QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
         db.setDatabaseName(QStringLiteral(":memory:"));

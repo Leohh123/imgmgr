@@ -2,11 +2,10 @@
 #include "database/ImageRepository.h"
 #include "database/RuleRepository.h"
 #include "database/SqlUtils.h"
+#include "TestDbUtils.h"
 #include "utils/RuleUtils.h"
 
 #include <QSqlQuery>
-#include <QTemporaryDir>
-#include <QUuid>
 #include <QtTest/QtTest>
 
 class DatabaseRepositoryTests : public QObject {
@@ -22,52 +21,16 @@ private slots:
     void replaceRulesPreservesHierarchyAndRollsBackOnFailure();
 };
 
-namespace {
-QString uniqueConnectionName()
-{
-    return QStringLiteral("database_repository_test_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
-}
-
-QString temporaryDatabasePath(QTemporaryDir* dir)
-{
-    return dir->filePath(QStringLiteral("project.imgmgr"));
-}
-
-ImageRecord makeImage(const QString& absolutePath, const QString& relativePath, const QString& fileName)
-{
-    ImageRecord image;
-    image.absolutePath = absolutePath;
-    image.relativePath = relativePath;
-    image.fileName = fileName;
-    image.fileStem = QFileInfo(fileName).completeBaseName();
-    image.parentDir = QFileInfo(relativePath).path();
-    image.extension = QFileInfo(fileName).suffix();
-    image.fileSize = 1024;
-    image.modifiedTime = 100;
-    image.width = 64;
-    image.height = 32;
-    image.hasAlpha = true;
-    image.imageFormat = QStringLiteral("png");
-    return image;
-}
-
-RuleRecord makeRule(const QString& name, const QString& pattern, int parentId = 0)
-{
-    RuleRecord rule;
-    rule.parentId = parentId;
-    rule.name = name;
-    rule.pattern = pattern;
-    rule.matchTarget = RuleUtils::fileNameStemTarget();
-    return rule;
-}
-}
+using TestDbUtils::makeImage;
+using TestDbUtils::makeRule;
+using TestDbUtils::temporaryDatabasePath;
 
 void DatabaseRepositoryTests::databaseInitializeCreatesSchemaAndIsIdempotent()
 {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
     QVERIFY2(manager.initialize(), qPrintable(manager.lastError()));
 
@@ -88,7 +51,7 @@ void DatabaseRepositoryTests::imageRepositoryUpsertsFetchesAndUpdatesThumbnail()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
@@ -129,7 +92,7 @@ void DatabaseRepositoryTests::imageRepositoryFiltersByPatternStatusAndRule()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
@@ -197,7 +160,7 @@ void DatabaseRepositoryTests::imageRepositoryAppliesLimitAfterPostQueryFilters()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
@@ -254,7 +217,7 @@ void DatabaseRepositoryTests::imageRepositoryFetchesRuleEvaluationMetadataWithou
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
@@ -292,7 +255,7 @@ void DatabaseRepositoryTests::ruleRepositoryPersistsHierarchyAndRemovesChildrenR
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     RuleRepository rules(manager.db());
@@ -346,7 +309,7 @@ void DatabaseRepositoryTests::replaceRulesPreservesHierarchyAndRollsBackOnFailur
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("database_repository_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     RuleRepository rules(manager.db());

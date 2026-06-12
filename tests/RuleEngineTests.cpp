@@ -2,11 +2,9 @@
 #include "database/ImageRepository.h"
 #include "database/RuleRepository.h"
 #include "services/RuleEngine.h"
-#include "utils/RuleUtils.h"
+#include "TestDbUtils.h"
 
 #include <QSignalSpy>
-#include <QTemporaryDir>
-#include <QUuid>
 #include <QtTest/QtTest>
 
 class RuleEngineTests : public QObject {
@@ -18,51 +16,16 @@ private slots:
     void childMatchWithoutMatchedAncestorIsAConflict();
 };
 
-namespace {
-QString uniqueConnectionName()
-{
-    return QStringLiteral("rule_engine_test_%1").arg(QUuid::createUuid().toString(QUuid::Id128));
-}
-
-QString temporaryDatabasePath(QTemporaryDir* dir)
-{
-    return dir->filePath(QStringLiteral("project.imgmgr"));
-}
-
-ImageRecord makeImage(const QString& stem)
-{
-    ImageRecord image;
-    image.absolutePath = QStringLiteral("D:/assets/%1.png").arg(stem);
-    image.relativePath = QStringLiteral("%1.png").arg(stem);
-    image.fileName = QStringLiteral("%1.png").arg(stem);
-    image.fileStem = stem;
-    image.parentDir = QStringLiteral(".");
-    image.extension = QStringLiteral("png");
-    image.fileSize = 100;
-    image.modifiedTime = 100;
-    image.width = 16;
-    image.height = 16;
-    image.imageFormat = QStringLiteral("png");
-    return image;
-}
-
-RuleRecord makeRule(const QString& name, const QString& pattern, int parentId = 0)
-{
-    RuleRecord rule;
-    rule.name = name;
-    rule.pattern = pattern;
-    rule.parentId = parentId;
-    rule.matchTarget = RuleUtils::fileNameStemTarget();
-    return rule;
-}
-}
+using TestDbUtils::makeImage;
+using TestDbUtils::makeRule;
+using TestDbUtils::temporaryDatabasePath;
 
 void RuleEngineTests::recalculationStoresMatchesAndImageStatuses()
 {
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("rule_engine_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
@@ -107,7 +70,7 @@ void RuleEngineTests::ancestorRulesDoNotConflictAndAllowConflictSuppressesSiblin
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("rule_engine_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
@@ -164,7 +127,7 @@ void RuleEngineTests::childMatchWithoutMatchedAncestorIsAConflict()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    DatabaseManager manager(uniqueConnectionName());
+    DatabaseManager manager(TestDbUtils::uniqueConnectionName(QStringLiteral("rule_engine_test")));
     QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
 
     ImageRepository images(manager.db());
