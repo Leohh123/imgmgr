@@ -59,7 +59,7 @@ void RuleEditDialog::createControls(const QVector<RuleRecord>& allRules, const Q
         m_target->setCurrentIndex(0);
 
     m_priority = new QSpinBox(this);
-    m_priority->setRange(-100000, 100000);
+    m_priority->setRange(RuleRecord::MinPriority, RuleRecord::MaxPriority);
     m_priority->setValue(m_rule.priority);
 
     m_enabled = new QCheckBox(QStringLiteral("启用"), this);

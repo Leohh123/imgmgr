@@ -57,6 +57,9 @@ struct ImageFilter {
 };
 
 struct RuleRecord {
+    static constexpr int MinPriority = -100000;
+    static constexpr int MaxPriority = 100000;
+
     int id = 0;
     int parentId = 0;
     QString name;

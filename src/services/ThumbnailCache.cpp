@@ -12,6 +12,8 @@
 #include <QtConcurrent>
 
 namespace {
+constexpr int ThumbnailMemoryCacheCostLimit = 512;
+
 QImage generateThumbnailImage(const QString& sourcePath, const QString& outputPath, const QSize& size)
 {
     QImageReader reader(sourcePath);
@@ -33,7 +35,7 @@ QImage generateThumbnailImage(const QString& sourcePath, const QString& outputPa
 ThumbnailCache::ThumbnailCache(ImageRepository* repository, QObject* parent)
     : QObject(parent)
     , m_repository(repository)
-    , m_memoryCache(512)
+    , m_memoryCache(ThumbnailMemoryCacheCostLimit)
 {
     QThreadPool::globalInstance()->setMaxThreadCount(qMax(2, QThread::idealThreadCount() - 1));
 }
