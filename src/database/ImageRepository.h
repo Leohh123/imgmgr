@@ -8,11 +8,13 @@
 
 class ImageRepository {
 public:
+    static constexpr int DefaultFetchLimit = 50000;
+
     explicit ImageRepository(QSqlDatabase db = {});
     void setDatabase(QSqlDatabase db) { m_db = db; }
 
     bool upsertImages(const QVector<ImageRecord>& records);
-    QVector<ImageRecord> fetchImages(const ImageFilter& filter, int limit = 50000) const;
+    QVector<ImageRecord> fetchImages(const ImageFilter& filter, int limit = DefaultFetchLimit) const;
     QVector<ImageRecord> fetchAllImages(const ImageFilter& filter = {}) const;
     ImageRecord fetchImage(int imageId) const;
     bool updateThumbnail(int imageId, const QString& thumbnailPath, int width, int height);

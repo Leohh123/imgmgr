@@ -16,6 +16,7 @@ private slots:
     void databaseInitializeCreatesSchemaAndIsIdempotent();
     void imageRepositoryUpsertsFetchesAndUpdatesThumbnail();
     void imageRepositoryFiltersByPatternStatusAndRule();
+    void imageRepositoryAppliesLimitAfterPostQueryFilters();
     void ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively();
     void replaceRulesPreservesHierarchyAndRollsBackOnFailure();
 };
@@ -188,6 +189,63 @@ void DatabaseRepositoryTests::imageRepositoryFiltersByPatternStatusAndRule()
     insertChildMatch.addBindValue(0);
     QVERIFY2(SqlUtils::exec(&insertChildMatch, &error), qPrintable(error));
     QVERIFY(images.fetchAllImages(currentRule).isEmpty());
+}
+
+void DatabaseRepositoryTests::imageRepositoryAppliesLimitAfterPostQueryFilters()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    DatabaseManager manager(uniqueConnectionName());
+    QVERIFY2(manager.openProject(temporaryDatabasePath(&dir)), qPrintable(manager.lastError()));
+
+    ImageRepository images(manager.db());
+    const ImageRecord unclassified = makeImage(
+        QStringLiteral("D:/assets/a_unused.png"),
+        QStringLiteral("a_unused.png"),
+        QStringLiteral("a_unused.png"));
+    const ImageRecord classified = makeImage(
+        QStringLiteral("D:/assets/z_target_01.png"),
+        QStringLiteral("z_target_01.png"),
+        QStringLiteral("z_target_01.png"));
+    QVERIFY2(images.upsertImages({ unclassified, classified }), qPrintable(images.lastError()));
+
+    const QVector<ImageRecord> allImages = images.fetchAllImages();
+    int classifiedImageId = 0;
+    for (const ImageRecord& image : allImages) {
+        if (image.fileStem == QStringLiteral("z_target_01"))
+            classifiedImageId = image.id;
+    }
+    QVERIFY(classifiedImageId > 0);
+
+    RuleRepository rules(manager.db());
+    const int ruleId = rules.addRule(makeRule(QStringLiteral("目标"), QStringLiteral("z_target_01")));
+    QVERIFY2(ruleId > 0, qPrintable(rules.lastError()));
+
+    QSqlQuery insertMatch(manager.db());
+    insertMatch.prepare(QStringLiteral(
+        "INSERT INTO image_rule_matches (image_id, rule_id, is_conflict, created_at) VALUES (?,?,?,0)"));
+    insertMatch.addBindValue(classifiedImageId);
+    insertMatch.addBindValue(ruleId);
+    insertMatch.addBindValue(0);
+    QString error;
+    QVERIFY2(SqlUtils::exec(&insertMatch, &error), qPrintable(error));
+
+    ImageFilter classifiedOnly;
+    classifiedOnly.onlyUnclassified = false;
+    classifiedOnly.onlyConflict = false;
+    classifiedOnly.onlyMultiMatch = false;
+    QVector<ImageRecord> filtered = images.fetchImages(classifiedOnly, 1);
+    QCOMPARE(filtered.size(), 1);
+    QCOMPARE(filtered.first().fileStem, QStringLiteral("z_target_01"));
+
+    ImageFilter regexFilter;
+    regexFilter.ruleType = RuleUtils::regexRuleType();
+    regexFilter.pattern = QStringLiteral("z_target_\\d+");
+    regexFilter.matchTarget = RuleUtils::fileNameStemTarget();
+    filtered = images.fetchImages(regexFilter, 1);
+    QCOMPARE(filtered.size(), 1);
+    QCOMPARE(filtered.first().fileStem, QStringLiteral("z_target_01"));
 }
 
 void DatabaseRepositoryTests::ruleRepositoryPersistsHierarchyAndRemovesChildrenRecursively()

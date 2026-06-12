@@ -82,6 +82,25 @@ bool statusAllowed(const ImageFilter& filter, ImageStatus status)
     return false;
 }
 
+bool filtersByStatusAfterQuery(const ImageFilter& filter)
+{
+    return !(filter.onlyClassified
+        && filter.onlyUnclassified
+        && filter.onlyConflict
+        && filter.onlyMultiMatch);
+}
+
+bool filtersByRegexAfterQuery(const ImageFilter& filter)
+{
+    return filter.ruleType == RuleUtils::regexRuleType()
+        && !filter.pattern.trimmed().isEmpty();
+}
+
+bool filtersAfterQuery(const ImageFilter& filter)
+{
+    return filtersByStatusAfterQuery(filter) || filtersByRegexAfterQuery(filter);
+}
+
 QHash<int, int> loadRuleParents(QSqlDatabase db)
 {
     QHash<int, int> parentById;
@@ -213,7 +232,7 @@ ImageQuery buildFetchImagesQuery(QSqlDatabase db, const ImageFilter& filter, int
 
     query.sql += " GROUP BY i.id";
     query.sql += " ORDER BY i.relative_path";
-    if (limit > 0) {
+    if (limit > 0 && !filtersAfterQuery(filter)) {
         query.sql += " LIMIT ?";
         query.binds << limit;
     }
@@ -290,16 +309,11 @@ QVector<ImageRecord> ImageRepository::fetchImages(const ImageFilter& filter, int
         ImageRecord r = imageRecordWithStatus(q, parentById);
         if (!statusAllowed(filter, r.status))
             continue;
+        if (filtersByRegexAfterQuery(filter) && !RuleUtils::imageMatchesFilter(r, filter))
+            continue;
         out << r;
-    }
-
-    if (filter.ruleType == RuleUtils::regexRuleType() && !filter.pattern.trimmed().isEmpty()) {
-        QVector<ImageRecord> filtered;
-        for (const auto& r : out) {
-            if (RuleUtils::imageMatchesFilter(r, filter))
-                filtered << r;
-        }
-        return filtered;
+        if (limit > 0 && out.size() >= limit)
+            break;
     }
     return out;
 }
