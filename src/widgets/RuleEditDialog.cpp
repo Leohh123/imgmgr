@@ -1,5 +1,6 @@
 #include "widgets/RuleEditDialog.h"
 
+#include "services/RuleValidationService.h"
 #include "utils/RuleUtils.h"
 #include "utils/UiUtils.h"
 
@@ -9,7 +10,6 @@
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QMessageBox>
-#include <QRegularExpression>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -113,34 +113,25 @@ QString RuleEditDialog::rulePath(int ruleId) const
 
 void RuleEditDialog::accept()
 {
-    const QString ruleName = m_name->text().trimmed();
-    const QString rulePattern = m_pattern->text().trimmed();
-    if (ruleName.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("规则名称为空"), QStringLiteral("请输入规则名称。"));
+    RuleRecord edited = m_rule;
+    edited.name = m_name->text().trimmed();
+    edited.parentId = m_parent->currentData().toInt();
+    edited.pattern = m_pattern->text().trimmed();
+    edited.ruleType = m_type->currentData().toString();
+    edited.matchTarget = m_target->currentData().toString();
+    edited.priority = m_priority->value();
+    edited.enabled = m_enabled->isChecked();
+    edited.allowConflict = m_allowConflict->isChecked();
+    edited.caseSensitive = m_caseSensitive->isChecked();
+    edited.wholeMatch = m_wholeMatch->isChecked();
+    edited.note = m_note->text();
+
+    RuleValidationService::ValidationError error;
+    if (!RuleValidationService::validateRuleForSave(edited, &error)) {
+        QMessageBox::warning(this, error.title, error.message);
         return;
-    }
-    if (rulePattern.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("规则为空"), QStringLiteral("请输入规则内容。"));
-        return;
-    }
-    if (m_type->currentData().toString() == RuleUtils::regexRuleType()) {
-        const QRegularExpression re(rulePattern);
-        if (!re.isValid()) {
-            QMessageBox::warning(this, QStringLiteral("正则无效"), re.errorString());
-            return;
-        }
     }
 
-    m_rule.name = ruleName;
-    m_rule.parentId = m_parent->currentData().toInt();
-    m_rule.pattern = rulePattern;
-    m_rule.ruleType = m_type->currentData().toString();
-    m_rule.matchTarget = m_target->currentData().toString();
-    m_rule.priority = m_priority->value();
-    m_rule.enabled = m_enabled->isChecked();
-    m_rule.allowConflict = m_allowConflict->isChecked();
-    m_rule.caseSensitive = m_caseSensitive->isChecked();
-    m_rule.wholeMatch = m_wholeMatch->isChecked();
-    m_rule.note = m_note->text();
+    m_rule = edited;
     QDialog::accept();
 }
