@@ -53,6 +53,8 @@ void SqlUtilsTests::execFailureReportsError()
             QSqlQuery query(db);
             QVERIFY(!SqlUtils::exec(&query, QStringLiteral("SELECT * FROM missing_table"), &error));
             QVERIFY(!error.isEmpty());
+            QVERIFY(error.contains(QStringLiteral("missing_table")));
+            QVERIFY(error.contains(QStringLiteral("SQL: SELECT * FROM missing_table")));
         }
         db.close();
     }
@@ -77,6 +79,8 @@ void SqlUtilsTests::runStatementsStopsOnFirstFailure()
 
             QVERIFY(!SqlUtils::runStatements(&query, statements, &error));
             QVERIFY(!error.isEmpty());
+            QVERIFY(error.contains(QStringLiteral("missing_table")));
+            QVERIFY(error.contains(QStringLiteral("SQL: INSERT INTO missing_table VALUES (1)")));
 
             QVERIFY2(SqlUtils::exec(&query, QStringLiteral(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='first_table'"), &error), qPrintable(error));
